@@ -193,10 +193,40 @@ async function callClaudeBuiltIn(systemPrompt, userText, imageBase64) {
   return data.content?.[0]?.text || '';
 }
 
-// ── Unified entry point ──────────────────────────────────────────────────────
-// Strips markdown code fences that some models wrap JSON in.
+// Strips markdown code fences and any stray prose some models add despite instructions,
+// then extracts just the {...} JSON object from anywhere in the text.
 function cleanJsonResponse(text) {
-  return text.trim().replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/```\s*$/i, '').trim();
+  if (!text) return '{}';
+  let cleaned = text.trim();
+
+  // Remove markdown code fences (```json ... ``` or ``` ... ```)
+  cleaned = cleaned.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/i, '').trim();
+
+  // If there's still leading/trailing prose, extract from the first { to the last }
+  const firstBrace = cleaned.indexOf('{');
+  const lastBrace = cleaned.lastIndexOf('}');
+  if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+    cleaned = cleaned.slice(firstBrace, lastBrace + 1);
+  }
+
+  return cleaned;
+}
+
+// Validates that a string actually parses as JSON, throws a clear error if not —
+// callers can catch AIParseError specifically to show "try again" messaging.
+export class AIParseError extends Error {
+  constructor(rawText) {
+    super('AI response was not valid JSON');
+    this.rawText = rawText;
+  }
+}
+
+function parseOrThrow(cleanedText) {
+  try {
+    return JSON.parse(cleanedText);
+  } catch (e) {
+    throw new AIParseError(cleanedText);
+  }
 }
 
 /**
@@ -204,13 +234,19 @@ function cleanJsonResponse(text) {
  * @param {string} systemPrompt - instructions for the model
  * @param {string} userText - the user's message/request
  * @param {string|null} imageBase64 - optional base64 image data (OCR only; only Gemini & Claude support vision)
- * @returns {Promise<string>} cleaned text response (JSON string expected by callers)
+ * @returns {Promise<object>} parsed JSON object
  */
 export async function callAI(systemPrompt, userText, imageBase64 = null) {
+  // Reinforce JSON-only output — appended to every system prompt regardless of provider,
+  // since smaller free models (DeepSeek, OpenChat) often ignore a single instruction.
+  const strictSystemPrompt = `${systemPrompt}
+
+CRITICAL: Respond with ONLY the raw JSON object. No markdown code fences, no backticks, no explanation before or after, no "Here is the JSON:" preamble. Your entire response must start with { and end with }.`;
+
   // Claude works for free automatically inside Claude.ai — prefer it if no key is set anywhere
   if (CLAUDE_AVAILABLE && !hasAnyKeyConfigured()) {
-    const text = await callClaudeBuiltIn(systemPrompt, userText, imageBase64);
-    return cleanJsonResponse(text);
+    const text = await callClaudeBuiltIn(strictSystemPrompt, userText, imageBase64);
+    return parseOrThrow(cleanJsonResponse(text));
   }
 
   const providerId = getActiveProvider();
@@ -218,8 +254,8 @@ export async function callAI(systemPrompt, userText, imageBase64 = null) {
 
   if (!apiKey) {
     if (CLAUDE_AVAILABLE) {
-      const text = await callClaudeBuiltIn(systemPrompt, userText, imageBase64);
-      return cleanJsonResponse(text);
+      const text = await callClaudeBuiltIn(strictSystemPrompt, userText, imageBase64);
+      return parseOrThrow(cleanJsonResponse(text));
     }
     throw new AIUnavailableError(
       `No API key configured for ${PROVIDERS[providerId]?.name || providerId}. Add a free key in Settings → AI Provider.`
@@ -235,21 +271,28 @@ export async function callAI(systemPrompt, userText, imageBase64 = null) {
   let text;
   switch (providerId) {
     case 'gemini':
-      text = await callGemini(apiKey, systemPrompt, userText, imageBase64);
+      text = await callGemini(apiKey, strictSystemPrompt, userText, imageBase64);
       break;
     case 'grok':
-      text = await callGrok(apiKey, systemPrompt, userText);
+      text = await callGrok(apiKey, strictSystemPrompt, userText);
       break;
     case 'deepseek':
-      text = await callDeepSeek(apiKey, systemPrompt, userText);
+      text = await callDeepSeek(apiKey, strictSystemPrompt, userText);
       break;
     case 'openchat':
-      text = await callOpenChat(apiKey, systemPrompt, userText);
+      text = await callOpenChat(apiKey, strictSystemPrompt, userText);
       break;
     default:
       throw new AIUnavailableError(`Unknown provider: ${providerId}`);
   }
-  return cleanJsonResponse(text);
+
+  if (!text || !text.trim()) {
+    throw new AIUnavailableError(
+      `${PROVIDERS[providerId]?.name || providerId} returned an empty response. The free tier may be rate-limited right now — wait a moment and try again, or switch providers in Settings.`
+    );
+  }
+
+  return parseOrThrow(cleanJsonResponse(text));
 }
 
 export function isAIAvailable() {

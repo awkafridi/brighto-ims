@@ -2,9 +2,10 @@ import { useState } from 'react';
 import { useStore } from '../data/store';
 import { Badge, Card, Table, Modal, Input, Btn, PageHeader } from '../components/UI';
 import { useAudio } from '../hooks/useAudio';
+import { openWhatsApp, buildReminderMessage, buildPaymentReceivedMessage, buildAccountSummaryMessage } from '../utils/whatsapp';
 
 export default function Shopkeepers() {
-  const { shopkeepers, ledgerEntries, addShopkeeper, editShopkeeper, deleteShopkeeper, recordPayment } = useStore();
+  const { shopkeepers, ledgerEntries, invoices, brands, addShopkeeper, editShopkeeper, deleteShopkeeper, recordPayment } = useStore();
   const { speakLedger } = useAudio();
   const [selected, setSelected] = useState(null);
   const [showAdd, setShowAdd] = useState(false);
@@ -23,6 +24,7 @@ export default function Shopkeepers() {
   );
 
   const selectedLedger = selected ? ledgerEntries.filter(e => e.shopkeeperId === selected.id) : [];
+  const selectedInvoices = selected ? invoices.filter(i => i.shopkeeperId === selected.id).sort((a, b) => new Date(b.date) - new Date(a.date)) : [];
 
   const openAdd = () => { setForm({ shopName: '', owner: '', address: '', phone: '' }); setEditing(null); setShowAdd(true); };
   const openEdit = (sk) => { setForm({ shopName: sk.shopName, owner: sk.owner, address: sk.address, phone: sk.phone }); setEditing(sk); setShowAdd(true); };
@@ -41,15 +43,36 @@ export default function Shopkeepers() {
 
   const handlePayment = () => {
     if (!paymentForm.amount || isNaN(paymentForm.amount)) return;
-    recordPayment(selected.id, Number(paymentForm.amount), paymentForm.date);
-    setSelected(prev => ({ ...prev, balance: Math.max(0, prev.balance - Number(paymentForm.amount)) }));
+    const amount = Number(paymentForm.amount);
+    const previousBalance = selected.balance;
+    const newBalance = Math.max(0, previousBalance - amount);
+    recordPayment(selected.id, amount, paymentForm.date);
+    setSelected(prev => ({ ...prev, balance: newBalance }));
     setShowPayment(false);
+
+    // Offer WhatsApp payment confirmation right after recording
+    const brand = brands.find(b => b.id === selected.brandId) || brands[0];
+    const message = buildPaymentReceivedMessage({
+      shopName: selected.shopName, brandName: brand?.name,
+      amountReceived: amount, previousBalance, newBalance, date: paymentForm.date,
+    });
+    if (window.confirm(`Payment recorded! Send WhatsApp confirmation to ${selected.shopName}?`)) {
+      openWhatsApp(selected.phone, message);
+    }
     setPaymentForm({ amount: '', date: new Date().toISOString().split('T')[0], method: 'Cash' });
   };
 
-  const handleWhatsApp = (sk) => {
-    const msg = encodeURIComponent(`Dear ${sk.shopName},\n\nThis is a reminder regarding your outstanding balance of ₨${sk.balance.toLocaleString()}.\n\nPlease arrange payment at your earliest convenience.\n\nThank you,\nBrighto/Hoshi Team`);
-    window.open(`https://wa.me/${(sk.phone || '').replace(/[^0-9]/g, '')}?text=${msg}`, '_blank');
+  const handleReminder = (sk) => {
+    openWhatsApp(sk.phone, buildReminderMessage({ shopName: sk.shopName, balance: sk.balance }));
+  };
+
+  const handleAccountSummary = (sk) => {
+    const skInvoices = invoices.filter(i => i.shopkeeperId === sk.id).sort((a, b) => new Date(b.date) - new Date(a.date));
+    const totalPurchased = skInvoices.reduce((s, i) => s + i.total, 0);
+    const totalPaid = ledgerEntries.filter(e => e.shopkeeperId === sk.id && e.type === 'payment').reduce((s, e) => s + e.credit, 0);
+    openWhatsApp(sk.phone, buildAccountSummaryMessage({
+      shopName: sk.shopName, totalPurchased, totalPaid, balance: sk.balance, recentInvoices: skInvoices,
+    }));
   };
 
   return (
@@ -77,7 +100,7 @@ export default function Shopkeepers() {
             <div style={{ display: 'flex', gap: 5, justifyContent: 'flex-end' }} onClick={e => e.stopPropagation()}>
               <button onClick={() => openEdit(row)} style={{ fontSize: 11, padding: '3px 8px', borderRadius: 6, background: 'var(--accent-dim)', color: 'var(--accent)', border: 'none', cursor: 'pointer' }}>Edit</button>
               <button onClick={() => handleDelete(row)} style={{ fontSize: 11, padding: '3px 8px', borderRadius: 6, background: 'var(--red-dim)', color: 'var(--red)', border: 'none', cursor: 'pointer' }}>{confirmDelete === row.id ? 'Sure?' : 'Del'}</button>
-              <button onClick={() => handleWhatsApp(row)} style={{ fontSize: 11, padding: '3px 8px', borderRadius: 6, background: 'rgba(37,211,102,0.1)', color: '#25d366', border: 'none', cursor: 'pointer' }}>💬</button>
+              <button onClick={() => handleReminder(row)} title="Send balance reminder" style={{ fontSize: 11, padding: '3px 8px', borderRadius: 6, background: 'rgba(37,211,102,0.1)', color: '#25d366', border: 'none', cursor: 'pointer' }}>💬</button>
             </div>
           )},
         ]} data={filtered} />
@@ -91,9 +114,25 @@ export default function Shopkeepers() {
             <div><div style={{ fontSize: 11, color: 'var(--text3)' }}>Address</div><div style={{ fontWeight: 500, fontSize: 12 }}>{selected.address}</div></div>
           </div>
 
+          {/* Purchase history summary — old selling + remaining balance reminder */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 10, marginBottom: 16 }}>
+            <div style={{ background: 'var(--bg3)', borderRadius: 'var(--radius)', padding: 12 }}>
+              <div style={{ fontSize: 11, color: 'var(--text3)' }}>Total purchased (all time)</div>
+              <div style={{ fontSize: 18, fontWeight: 700, fontFamily: "'Space Grotesk', sans-serif" }}>₨{selectedInvoices.reduce((s, i) => s + i.total, 0).toLocaleString()}</div>
+            </div>
+            <div style={{ background: 'var(--bg3)', borderRadius: 'var(--radius)', padding: 12 }}>
+              <div style={{ fontSize: 11, color: 'var(--text3)' }}>Total paid (all time)</div>
+              <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--green)', fontFamily: "'Space Grotesk', sans-serif" }}>₨{selectedLedger.filter(e => e.type === 'payment').reduce((s, e) => s + e.credit, 0).toLocaleString()}</div>
+            </div>
+            <div style={{ background: 'var(--bg3)', borderRadius: 'var(--radius)', padding: 12 }}>
+              <div style={{ fontSize: 11, color: 'var(--text3)' }}>Invoices on record</div>
+              <div style={{ fontSize: 18, fontWeight: 700, fontFamily: "'Space Grotesk', sans-serif" }}>{selectedInvoices.length}</div>
+            </div>
+          </div>
+
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
             <div>
-              <div style={{ fontSize: 11, color: 'var(--text3)' }}>Current balance</div>
+              <div style={{ fontSize: 11, color: 'var(--text3)' }}>Current remaining balance</div>
               <div style={{ fontSize: 26, fontWeight: 700, color: selected.balance > 0 ? 'var(--red)' : 'var(--green)', fontFamily: "'Space Grotesk', sans-serif" }}>₨{(shopkeepers.find(s => s.id === selected.id)?.balance || 0).toLocaleString()}</div>
             </div>
             <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
@@ -102,7 +141,8 @@ export default function Shopkeepers() {
                 <option value="ur">🇵🇰 UR</option>
               </select>
               <Btn variant="ghost" onClick={() => speakLedger(shopkeepers.find(s => s.id === selected.id) || selected, selectedLedger, audioLang)}>🔊</Btn>
-              <Btn variant="ghost" onClick={() => handleWhatsApp(selected)}>💬 WhatsApp</Btn>
+              <Btn variant="ghost" onClick={() => handleAccountSummary(selected)}>💬 Send summary</Btn>
+              <Btn variant="ghost" onClick={() => handleReminder(selected)}>💬 Reminder</Btn>
               <Btn onClick={() => setShowPayment(true)}>Record payment</Btn>
             </div>
           </div>
@@ -114,7 +154,7 @@ export default function Shopkeepers() {
             { key: 'debit', label: 'Debit (₨)', align: 'right', render: v => v > 0 ? <span style={{ color: 'var(--red)' }}>+{v.toLocaleString()}</span> : '—' },
             { key: 'credit', label: 'Credit (₨)', align: 'right', render: v => v > 0 ? <span style={{ color: 'var(--green)' }}>−{v.toLocaleString()}</span> : '—' },
             { key: 'balance', label: 'Balance', align: 'right', render: v => <strong>₨{v.toLocaleString()}</strong> },
-          ]} data={ledgerEntries.filter(e => e.shopkeeperId === selected.id)} />
+          ]} data={selectedLedger} />
 
           {showPayment && (
             <div style={{ marginTop: 16, padding: 16, background: 'var(--bg3)', borderRadius: 'var(--radius)', border: '0.5px solid var(--border2)' }}>
@@ -126,7 +166,7 @@ export default function Shopkeepers() {
               <Input label="Payment method" value={paymentForm.method} onChange={e => setPaymentForm(f => ({ ...f, method: e.target.value }))} placeholder="Cash / Bank / Cheque" />
               <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
                 <Btn variant="ghost" onClick={() => setShowPayment(false)}>Cancel</Btn>
-                <Btn onClick={handlePayment}>Save payment</Btn>
+                <Btn onClick={handlePayment}>Save payment & notify</Btn>
               </div>
             </div>
           )}

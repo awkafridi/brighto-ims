@@ -1,17 +1,19 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useStore } from '../data/store';
 import { Badge, Card, Table, Modal, Input, Select, Btn, PageHeader } from '../components/UI';
 import { useAudio } from '../hooks/useAudio';
+import { openWhatsApp, buildPurchaseMessage } from '../utils/whatsapp';
 
 const statusColor = { paid: 'green', partial: 'amber', unpaid: 'red' };
 
 export default function Invoices({ activeBrand, prefill }) {
-  const { invoices, shopkeepers, products, brands, addInvoice, editInvoice } = useStore();
+  const { invoices, shopkeepers, products, brands, categories, addInvoice, editInvoice } = useStore();
   const { speakInvoice } = useAudio();
   const [showNew, setShowNew] = useState(false);
   const [selected, setSelected] = useState(null);
   const [statusFilter, setStatusFilter] = useState('all');
   const [audioLang, setAudioLang] = useState('en');
+  const [categoryFilter, setCategoryFilter] = useState('all');
   const [lines, setLines] = useState([{ productId: '', qty: 1, unitPrice: 0 }]);
   const [invForm, setInvForm] = useState({ shopkeeperId: '', brandId: brands[0]?.id || '', date: new Date().toISOString().split('T')[0], notes: '' });
 
@@ -20,6 +22,28 @@ export default function Invoices({ activeBrand, prefill }) {
     const matchStatus = statusFilter === 'all' || inv.status === statusFilter;
     return matchBrand && matchStatus;
   });
+
+  // Products narrowed by brand + category for the line-item dropdown
+  const availableProducts = products.filter(p =>
+    (activeBrand === 'all' || p.brandId === activeBrand) &&
+    (categoryFilter === 'all' || p.categoryId === categoryFilter)
+  );
+
+  // Selected shopkeeper's purchase history — shown live while building an invoice
+  const shopkeeperHistory = useMemo(() => {
+    if (!invForm.shopkeeperId) return null;
+    const sk = shopkeepers.find(s => s.id === invForm.shopkeeperId);
+    if (!sk) return null;
+    const skInvoices = invoices.filter(i => i.shopkeeperId === sk.id).sort((a, b) => new Date(b.date) - new Date(a.date));
+    const totalPurchased = skInvoices.reduce((s, i) => s + i.total, 0);
+    return {
+      shopkeeper: sk,
+      totalPurchased,
+      currentBalance: sk.balance,
+      lastInvoice: skInvoices[0] || null,
+      invoiceCount: skInvoices.length,
+    };
+  }, [invForm.shopkeeperId, shopkeepers, invoices]);
 
   const addLine = () => setLines([...lines, { productId: '', qty: 1, unitPrice: 0 }]);
   const removeLine = i => setLines(lines.filter((_, idx) => idx !== i));
@@ -37,10 +61,29 @@ export default function Invoices({ activeBrand, prefill }) {
 
   const handleCreate = () => {
     if (!invForm.shopkeeperId || lines.every(l => !l.productId)) return;
-    addInvoice({ ...invForm, items: lines.filter(l => l.productId) });
+    const validLines = lines.filter(l => l.productId);
+    addInvoice({ ...invForm, items: validLines });
+
+    // Offer WhatsApp confirmation right after saving
+    const sk = shopkeepers.find(s => s.id === invForm.shopkeeperId);
+    const brand = brands.find(b => b.id === invForm.brandId);
+    if (sk) {
+      const previousBalance = sk.balance;
+      const newBalance = previousBalance + lineTotal;
+      const productNames = validLines.map(l => products.find(p => p.id === l.productId)?.name || 'Item');
+      const message = buildPurchaseMessage({
+        shopName: sk.shopName, brandName: brand?.name, items: validLines,
+        productNames, total: lineTotal, previousBalance, newBalance, date: invForm.date,
+      });
+      if (window.confirm(`Invoice saved! Send WhatsApp confirmation to ${sk.shopName}?`)) {
+        openWhatsApp(sk.phone, message);
+      }
+    }
+
     setShowNew(false);
     setLines([{ productId: '', qty: 1, unitPrice: 0 }]);
     setInvForm({ shopkeeperId: '', brandId: brands[0]?.id || '', date: new Date().toISOString().split('T')[0], notes: '' });
+    setCategoryFilter('all');
   };
 
   return (
@@ -82,6 +125,11 @@ export default function Invoices({ activeBrand, prefill }) {
           </div>
           <Table columns={[
             { key: 'product', label: 'Product', render: (_, row) => products.find(p => p.id === row.productId)?.name || row.productId },
+            { key: 'category', label: 'Category', render: (_, row) => {
+              const p = products.find(p => p.id === row.productId);
+              const c = categories.find(c => c.id === p?.categoryId);
+              return c ? <span style={{ fontSize: 12 }}>{c.icon} {c.name}</span> : '—';
+            }},
             { key: 'qty', label: 'Qty', align: 'right' },
             { key: 'unitPrice', label: 'Unit price', align: 'right', render: v => `₨${v}` },
             { key: 'lineTotal', label: 'Total', align: 'right', render: (_, row) => <strong>₨{(row.qty * row.unitPrice).toLocaleString()}</strong> },
@@ -104,7 +152,7 @@ export default function Invoices({ activeBrand, prefill }) {
       )}
 
       {showNew && (
-        <Modal title="New invoice" onClose={() => setShowNew(false)} width={680}>
+        <Modal title="New invoice" onClose={() => setShowNew(false)} width={720}>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
             <Select label="Customer" value={invForm.shopkeeperId} onChange={e => setInvForm(f => ({ ...f, shopkeeperId: e.target.value }))}>
               <option value="">Select shopkeeper...</option>
@@ -114,14 +162,41 @@ export default function Invoices({ activeBrand, prefill }) {
               {brands.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
             </Select>
           </div>
+
+          {/* Shopkeeper purchase history reminder */}
+          {shopkeeperHistory && (
+            <div style={{
+              background: shopkeeperHistory.currentBalance > 0 ? 'var(--amber-dim)' : 'var(--green-dim)',
+              border: `0.5px solid ${shopkeeperHistory.currentBalance > 0 ? 'rgba(251,191,36,0.25)' : 'rgba(52,211,153,0.25)'}`,
+              borderRadius: 'var(--radius)', padding: '10px 14px', marginBottom: 14, fontSize: 12
+            }}>
+              <div style={{ fontWeight: 600, marginBottom: 4 }}>📋 {shopkeeperHistory.shopkeeper.shopName} — Account History</div>
+              <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', color: 'var(--text2)' }}>
+                <span>Total purchased: <strong style={{ color: 'var(--text)' }}>₨{shopkeeperHistory.totalPurchased.toLocaleString()}</strong></span>
+                <span>Current balance: <strong style={{ color: shopkeeperHistory.currentBalance > 0 ? 'var(--amber)' : 'var(--green)' }}>₨{shopkeeperHistory.currentBalance.toLocaleString()}</strong></span>
+                <span>{shopkeeperHistory.invoiceCount} previous invoice{shopkeeperHistory.invoiceCount !== 1 ? 's' : ''}</span>
+              </div>
+              {shopkeeperHistory.lastInvoice && (
+                <div style={{ marginTop: 4, color: 'var(--text3)' }}>Last purchase: {shopkeeperHistory.lastInvoice.date} — ₨{shopkeeperHistory.lastInvoice.total.toLocaleString()} ({shopkeeperHistory.lastInvoice.status})</div>
+              )}
+            </div>
+          )}
+
           <Input label="Invoice date" type="date" value={invForm.date} onChange={e => setInvForm(f => ({ ...f, date: e.target.value }))} />
 
-          <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text2)', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Line items</div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+            <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text2)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Line items</div>
+            <select value={categoryFilter} onChange={e => setCategoryFilter(e.target.value)} style={{ padding: '4px 10px', background: 'var(--bg3)', border: '0.5px solid var(--border2)', borderRadius: 'var(--radius)', color: 'var(--text)', fontSize: 12 }}>
+              <option value="all">All categories</option>
+              {categories.map(c => <option key={c.id} value={c.id}>{c.icon} {c.name}</option>)}
+            </select>
+          </div>
+
           {lines.map((line, i) => (
             <div key={i} style={{ display: 'grid', gridTemplateColumns: '2fr 80px 100px 36px', gap: 8, marginBottom: 8, alignItems: 'end' }}>
               <Select value={line.productId} onChange={e => updateLine(i, 'productId', e.target.value)} style={{ marginBottom: 0 }}>
                 <option value="">Select product...</option>
-                {products.filter(p => activeBrand === 'all' || p.brandId === activeBrand).map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                {availableProducts.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
               </Select>
               <Input type="number" value={line.qty} onChange={e => updateLine(i, 'qty', +e.target.value)} style={{ marginBottom: 0 }} />
               <Input type="number" value={line.unitPrice} onChange={e => updateLine(i, 'unitPrice', +e.target.value)} style={{ marginBottom: 0 }} />
@@ -131,14 +206,20 @@ export default function Invoices({ activeBrand, prefill }) {
           <button onClick={addLine} style={{ fontSize: 12, color: 'var(--accent)', background: 'none', border: '0.5px dashed var(--accent)', borderRadius: 'var(--radius)', padding: '6px 12px', cursor: 'pointer', width: '100%', marginBottom: 16 }}>+ Add line</button>
 
           <div style={{ background: 'var(--bg3)', borderRadius: 'var(--radius)', padding: '12px 14px', marginBottom: 16 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: shopkeeperHistory ? 6 : 0 }}>
               <span style={{ color: 'var(--text2)' }}>Invoice total</span>
               <strong style={{ fontFamily: "'Space Grotesk', sans-serif", fontSize: 18, color: 'var(--accent)' }}>₨{lineTotal.toLocaleString()}</strong>
             </div>
+            {shopkeeperHistory && (
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: 'var(--text3)', paddingTop: 6, borderTop: '0.5px solid var(--border)' }}>
+                <span>New balance after this sale</span>
+                <strong>₨{(shopkeeperHistory.currentBalance + lineTotal).toLocaleString()}</strong>
+              </div>
+            )}
           </div>
           <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
             <Btn variant="ghost" onClick={() => setShowNew(false)}>Cancel</Btn>
-            <Btn onClick={handleCreate}>Save invoice</Btn>
+            <Btn onClick={handleCreate}>Save invoice & notify</Btn>
           </div>
         </Modal>
       )}

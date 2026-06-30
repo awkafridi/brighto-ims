@@ -1,7 +1,7 @@
 import { useState, useRef, useCallback } from 'react';
 import { Modal, Btn } from './UI';
 import { useStore } from '../data/store';
-import { callAI, isAIAvailable, AIUnavailableError } from '../api/aiProvider';
+import { callAI, isAIAvailable, AIUnavailableError, AIParseError } from '../api/aiProvider';
 
 // ── OCR Invoice Scanner ───────────────────────────────────────────────────────
 export function OCRScanner({ onResult, onClose }) {
@@ -49,9 +49,7 @@ Extract invoice data from the image and return ONLY valid JSON with this exact s
 If you cannot find a field, use null. For Pakistani invoices, amounts are in PKR (₨).
 Return ONLY the JSON, no other text.`;
 
-      const text = await callAI(systemPrompt, 'Extract all invoice data from this image.', imageBase64);
-
-      const parsed = JSON.parse(text);
+      const parsed = await callAI(systemPrompt, 'Extract all invoice data from this image.', imageBase64);
 
       // Try to match extracted names to existing records
       const matchedSupplier = parsed.supplier
@@ -77,10 +75,13 @@ Return ONLY the JSON, no other text.`;
     } catch (e) {
       if (e instanceof AIUnavailableError) {
         setError(`🔒 ${e.message}`);
+      } else if (e instanceof AIParseError) {
+        setError('The AI read the image but its reply wasn\'t formatted correctly. This happens occasionally with free models — try scanning again, or use a clearer/well-lit photo.');
+        console.error('AI raw response (not valid JSON):', e.rawText);
       } else {
         setError('Could not parse invoice. Try a clearer image or fill in manually.');
+        console.error(e);
       }
-      console.error(e);
     } finally {
       setLoading(false);
     }
@@ -273,17 +274,18 @@ Parse the voice command and return ONLY valid JSON:
   "englishSummary": "Confirmation: brief English summary"
 }`;
 
-      const text = await callAI(systemPrompt, `Parse this voice command: "${transcript}"`);
-
-      const parsed = JSON.parse(text);
+      const parsed = await callAI(systemPrompt, `Parse this voice command: "${transcript}"`);
       setResult(parsed);
     } catch (e) {
       if (e instanceof AIUnavailableError) {
         setError(`🔒 ${e.message}`);
+      } else if (e instanceof AIParseError) {
+        setError('The AI understood your words but its reply wasn\'t formatted correctly. This happens occasionally with free models — try again, or speak a bit more clearly/simply.');
+        console.error('AI raw response (not valid JSON):', e.rawText);
       } else {
         setError('Could not understand command. Try again or type manually.');
+        console.error(e);
       }
-      console.error(e);
     } finally {
       setLoading(false);
     }
