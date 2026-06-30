@@ -1,33 +1,7 @@
 import { useState, useRef, useCallback } from 'react';
 import { Modal, Btn } from './UI';
 import { useStore } from '../data/store';
-
-const CLAUDE_API = 'https://api.anthropic.com/v1/messages';
-
-// Free hosting (GitHub Pages / Netlify / Cloudflare) has no backend to hold an API key,
-// so AI parsing is unavailable there. It works automatically when this app runs as a
-// Claude.ai artifact, where requests are proxied for free with no key needed.
-const AI_AVAILABLE = typeof window !== 'undefined' && window.location.hostname.includes('claude');
-
-class AIUnavailableError extends Error {}
-
-async function callClaude(messages, systemPrompt) {
-  if (!AI_AVAILABLE) {
-    throw new AIUnavailableError('AI parsing requires running inside Claude.ai, or your own API key on a backend.');
-  }
-  const response = await fetch(CLAUDE_API, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      model: 'claude-sonnet-4-6',
-      max_tokens: 1000,
-      system: systemPrompt,
-      messages,
-    }),
-  });
-  const data = await response.json();
-  return data.content?.[0]?.text || '';
-}
+import { callAI, isAIAvailable, AIUnavailableError } from '../api/aiProvider';
 
 // ── OCR Invoice Scanner ───────────────────────────────────────────────────────
 export function OCRScanner({ onResult, onClose }) {
@@ -75,20 +49,9 @@ Extract invoice data from the image and return ONLY valid JSON with this exact s
 If you cannot find a field, use null. For Pakistani invoices, amounts are in PKR (₨).
 Return ONLY the JSON, no other text.`;
 
-      const text = await callClaude([
-        {
-          role: 'user',
-          content: [
-            {
-              type: 'image',
-              source: { type: 'base64', media_type: 'image/jpeg', data: imageBase64 }
-            },
-            { type: 'text', text: 'Extract all invoice data from this image.' }
-          ]
-        }
-      ], systemPrompt);
+      const text = await callAI(systemPrompt, 'Extract all invoice data from this image.', imageBase64);
 
-      const parsed = JSON.parse(text.trim());
+      const parsed = JSON.parse(text);
 
       // Try to match extracted names to existing records
       const matchedSupplier = parsed.supplier
@@ -113,7 +76,7 @@ Return ONLY the JSON, no other text.`;
       setResult(enriched);
     } catch (e) {
       if (e instanceof AIUnavailableError) {
-        setError('🔒 AI scanning needs Claude.ai or a connected API key. On free hosting, please fill the invoice in manually — use "+ Add product" or "+ New invoice" instead.');
+        setError(`🔒 ${e.message}`);
       } else {
         setError('Could not parse invoice. Try a clearer image or fill in manually.');
       }
@@ -310,15 +273,13 @@ Parse the voice command and return ONLY valid JSON:
   "englishSummary": "Confirmation: brief English summary"
 }`;
 
-      const text = await callClaude([
-        { role: 'user', content: `Parse this voice command: "${transcript}"` }
-      ], systemPrompt);
+      const text = await callAI(systemPrompt, `Parse this voice command: "${transcript}"`);
 
-      const parsed = JSON.parse(text.trim());
+      const parsed = JSON.parse(text);
       setResult(parsed);
     } catch (e) {
       if (e instanceof AIUnavailableError) {
-        setError('🔒 Voice parsing needs Claude.ai or a connected API key. Free dictation still works above — just enter the sale or payment manually using the regular forms.');
+        setError(`🔒 ${e.message}`);
       } else {
         setError('Could not understand command. Try again or type manually.');
       }
@@ -480,9 +441,9 @@ export function AIFab({ onOCR, onVoice }) {
           flexDirection: 'column', gap: 6, minWidth: 180,
           boxShadow: '0 8px 32px rgba(0,0,0,0.4)'
         }}>
-          {!AI_AVAILABLE && (
+          {!isAIAvailable() && (
             <div style={{ fontSize: 11, color: 'var(--text3)', padding: '4px 10px 8px', borderBottom: '0.5px solid var(--border)', marginBottom: 2 }}>
-              ⓘ AI parsing limited on free hosting — voice typing & manual entry still work
+              ⓘ No AI key configured — add a free one in <strong style={{ color: 'var(--accent)' }}>Settings → AI Provider</strong>
             </div>
           )}
           <button onClick={() => { setOpen(false); onOCR(); }} style={{

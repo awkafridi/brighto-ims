@@ -3,6 +3,7 @@ import * as XLSX from 'xlsx';
 import { useStore } from '../data/store';
 import { useTheme } from '../hooks/useTheme';
 import { Card, Modal, Input, Btn, PageHeader, Badge } from '../components/UI';
+import { PROVIDERS, getActiveProvider, setActiveProvider, getApiKey, setApiKey } from '../api/aiProvider';
 
 const SHEETS_URL_KEY = 'ims_sheets_webhook_url';
 const SHEETS_AUTOSAVE_KEY = 'ims_sheets_autosave';
@@ -18,6 +19,15 @@ export default function Settings() {
   const [confirmDemo, setConfirmDemo] = useState(false);
   const [showGuide, setShowGuide] = useState(false);
   const syncTimeout = useRef(null);
+
+  // AI provider state
+  const [activeProvider, setActiveProviderState] = useState(getActiveProvider());
+  const [keys, setKeys] = useState(() => {
+    const obj = {};
+    Object.keys(PROVIDERS).forEach(id => { obj[id] = getApiKey(id); });
+    return obj;
+  });
+  const [savedFlash, setSavedFlash] = useState(null);
 
   // Save Sheets URL + autosave preference whenever they change
   useEffect(() => {
@@ -97,6 +107,21 @@ export default function Settings() {
     }
   };
 
+  const handleProviderSelect = (id) => {
+    setActiveProviderState(id);
+    setActiveProvider(id);
+  };
+
+  const handleKeyChange = (id, value) => {
+    setKeys(prev => ({ ...prev, [id]: value }));
+  };
+
+  const handleKeySave = (id) => {
+    setApiKey(id, keys[id]);
+    setSavedFlash(id);
+    setTimeout(() => setSavedFlash(null), 2000);
+  };
+
   const exportToExcel = () => {
     const wb = XLSX.utils.book_new();
 
@@ -148,6 +173,62 @@ export default function Settings() {
               color: theme === 'light' ? '#fff' : 'var(--text2)', border: 'none', cursor: 'pointer', transition: 'all 0.2s'
             }}>☀️ Light</button>
           </div>
+        </div>
+      </Card>
+
+      {/* AI Provider Selection */}
+      <Card style={{ marginBottom: 16 }}>
+        <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 4 }}>🧠 AI Provider (for OCR & Voice parsing)</div>
+        <div style={{ fontSize: 12, color: 'var(--text2)', marginBottom: 16 }}>
+          Pick a free AI service for invoice scanning and voice commands. Each needs its own free API key from the provider — your key stays only in this browser, never sent anywhere except directly to that provider.
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px,1fr))', gap: 10, marginBottom: 16 }}>
+          {Object.values(PROVIDERS).map(p => (
+            <div key={p.id} onClick={() => handleProviderSelect(p.id)} style={{
+              padding: '12px 14px', borderRadius: 'var(--radius)', cursor: 'pointer',
+              background: activeProvider === p.id ? 'var(--accent-dim)' : 'var(--bg3)',
+              border: activeProvider === p.id ? '1.5px solid var(--accent)' : '0.5px solid var(--border2)',
+              transition: 'all 0.15s'
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                <span style={{ fontWeight: 600, fontSize: 13 }}>{p.icon} {p.name}</span>
+                {activeProvider === p.id && <Badge color="accent">Active</Badge>}
+              </div>
+              <div style={{ fontSize: 11, color: 'var(--text3)', marginBottom: 2 }}>
+                {p.supportsVision ? '✓ Supports invoice photo scanning' : '✗ Voice commands only (no photo OCR)'}
+              </div>
+              <div style={{ fontSize: 11, color: getApiKey(p.id) ? 'var(--green)' : 'var(--amber)' }}>
+                {getApiKey(p.id) ? '✓ Key configured' : '⚠ No key yet'}
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* Key input for currently selected provider */}
+        <div style={{ background: 'var(--bg3)', borderRadius: 'var(--radius)', padding: 14, border: '0.5px solid var(--border2)' }}>
+          <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 4 }}>
+            {PROVIDERS[activeProvider].icon} {PROVIDERS[activeProvider].keyLabel}
+          </div>
+          <div style={{ fontSize: 11, color: 'var(--text2)', marginBottom: 10 }}>
+            {PROVIDERS[activeProvider].keyHelp}
+          </div>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <input
+              type="password"
+              placeholder={PROVIDERS[activeProvider].keyPlaceholder}
+              value={keys[activeProvider]}
+              onChange={e => handleKeyChange(activeProvider, e.target.value)}
+              style={{ flex: 1, padding: '8px 12px', background: 'var(--bg)', border: '0.5px solid var(--border2)', borderRadius: 'var(--radius)', color: 'var(--text)', outline: 'none', fontSize: 13 }}
+            />
+            <Btn onClick={() => handleKeySave(activeProvider)}>
+              {savedFlash === activeProvider ? '✓ Saved' : 'Save key'}
+            </Btn>
+          </div>
+        </div>
+
+        <div style={{ marginTop: 12, fontSize: 11, color: 'var(--text3)', lineHeight: 1.6 }}>
+          💡 <strong>Tip:</strong> Only Gemini supports scanning invoice photos (OCR). Grok, DeepSeek, and OpenChat work great for voice commands (turning spoken sentences into structured data) but can't read images.
         </div>
       </Card>
 
