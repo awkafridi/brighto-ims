@@ -1,6 +1,7 @@
 import { NavLink, useNavigate } from 'react-router-dom';
 import { useState } from 'react';
 import { useStore } from '../data/store';
+import { useTheme } from '../hooks/useTheme';
 import { BusinessManager } from './BusinessManager';
 
 const navItems = [
@@ -11,28 +12,18 @@ const navItems = [
   { path: '/invoices', label: 'Invoices', icon: '🧾' },
   { path: '/ledger', label: 'Ledger', icon: '📒' },
   { path: '/expenses', label: 'Expenses', icon: '💸' },
+  { path: '/settings', label: 'Settings', icon: '⚙️' },
 ];
 
 export default function Sidebar({ activeBrand, setActiveBrand }) {
-  const { brands, resetAll } = useStore();
+  const { brands } = useStore();
+  const { theme, toggleTheme } = useTheme();
   const [showBusiness, setShowBusiness] = useState(false);
-  const [confirmReset, setConfirmReset] = useState(false);
   const navigate = useNavigate();
 
   const handleLogout = () => {
-    localStorage.removeItem('ims_token');
+    localStorage.removeItem('ims_user');
     navigate('/login');
-  };
-
-  const handleReset = () => {
-    if (confirmReset) {
-      resetAll();
-      setActiveBrand('all');
-      setConfirmReset(false);
-    } else {
-      setConfirmReset(true);
-      setTimeout(() => setConfirmReset(false), 4000);
-    }
   };
 
   return (
@@ -78,8 +69,10 @@ export default function Sidebar({ activeBrand, setActiveBrand }) {
         </nav>
 
         <div style={{ padding: '10px 10px', borderTop: '0.5px solid var(--border)' }}>
-          <button onClick={handleReset} style={{ width: '100%', padding: '7px 10px', borderRadius: 'var(--radius)', background: confirmReset ? 'var(--red-dim)' : 'transparent', color: confirmReset ? 'var(--red)' : 'var(--text3)', border: confirmReset ? '0.5px solid rgba(248,113,113,0.3)' : '0.5px solid transparent', cursor: 'pointer', fontSize: 12, fontWeight: 500, marginBottom: 4, display: 'flex', alignItems: 'center', gap: 6, transition: 'all 0.2s' }}>
-            🔄 {confirmReset ? 'Confirm? Click again!' : 'Reset all data'}
+          <button onClick={toggleTheme} style={{ width: '100%', padding: '7px 10px', borderRadius: 'var(--radius)', background: 'transparent', color: 'var(--text3)', border: '0.5px solid transparent', cursor: 'pointer', fontSize: 12, fontWeight: 500, marginBottom: 4, display: 'flex', alignItems: 'center', gap: 6, transition: 'all 0.2s' }}
+            onMouseEnter={e => e.currentTarget.style.background = 'var(--bg3)'}
+            onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
+            {theme === 'dark' ? '☀️ Switch to Light' : '🌙 Switch to Dark'}
           </button>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 4px' }}>
             <div style={{ width: 28, height: 28, borderRadius: '50%', background: 'var(--accent-dim)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700, color: 'var(--accent)', flexShrink: 0 }}>AK</div>

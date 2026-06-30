@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { StoreProvider } from './data/store';
+import { ThemeProvider } from './hooks/useTheme';
 import Sidebar from './components/Sidebar';
 import Dashboard from './pages/Dashboard';
 import Inventory from './pages/Inventory';
@@ -9,6 +10,7 @@ import Shopkeepers from './pages/Shopkeepers';
 import Invoices from './pages/Invoices';
 import Ledger from './pages/Ledger';
 import Expenses from './pages/Expenses';
+import Settings from './pages/Settings';
 import Login from './pages/Login';
 import { OCRScanner, VoiceInput, AIFab } from './components/AIFeatures';
 
@@ -32,6 +34,7 @@ function ProtectedLayout({ activeBrand, setActiveBrand }) {
           <Route path="/invoices" element={<Invoices activeBrand={activeBrand} prefill={ocrPrefill} />} />
           <Route path="/ledger" element={<Ledger />} />
           <Route path="/expenses" element={<Expenses activeBrand={activeBrand} />} />
+          <Route path="/settings" element={<Settings />} />
         </Routes>
       </main>
       <AIFab onOCR={() => setShowOCR(true)} onVoice={() => setShowVoice(true)} />
@@ -47,14 +50,13 @@ function AppRoutes() {
   const [authed, setAuthed] = useState(!!savedUser);
 
   const handleLogin = (user) => setAuthed(true);
-  const handleLogout = () => { localStorage.removeItem('ims_user'); setAuthed(false); };
 
   return (
     <Routes>
       <Route path="/login" element={authed ? <Navigate to="/" /> : <Login onLogin={handleLogin} />} />
       <Route path="/*" element={
         authed
-          ? <ProtectedLayout activeBrand={activeBrand} setActiveBrand={setActiveBrand} onLogout={handleLogout} />
+          ? <ProtectedLayout activeBrand={activeBrand} setActiveBrand={setActiveBrand} />
           : <Navigate to="/login" />
       } />
     </Routes>
@@ -64,9 +66,11 @@ function AppRoutes() {
 export default function App() {
   return (
     <BrowserRouter basename="/brighto-ims">
-      <StoreProvider>
-        <AppRoutes />
-      </StoreProvider>
+      <ThemeProvider>
+        <StoreProvider>
+          <AppRoutes />
+        </StoreProvider>
+      </ThemeProvider>
     </BrowserRouter>
   );
 }

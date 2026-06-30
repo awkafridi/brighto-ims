@@ -61,9 +61,28 @@ export function StoreProvider({ children }) {
     setState(prev => ({ ...prev, [key]: updater(prev[key]) })), []);
 
   // ── RESET ────────────────────────────────────────────────────────────────────
+  // Restores the original sample/demo data (useful for exploring features)
   const resetAll = () => {
     localStorage.removeItem(STORAGE_KEY);
     setState(DEFAULT_STATE);
+  };
+
+  // Wipes everything to a clean, empty slate — for real business use
+  const clearAll = () => {
+    const empty = {
+      brands: DEFAULT_STATE.brands,        // keep brand names (Brighto/Hoshi) — just no transactional data
+      categories: DEFAULT_STATE.categories, // keep category list — just no transactional data
+      suppliers: [],
+      products: [],
+      batches: [],
+      shopkeepers: [],
+      invoices: [],
+      ledgerEntries: [],
+      expenses: [],
+      monthlySales: [],
+    };
+    localStorage.removeItem(STORAGE_KEY);
+    setState(empty);
   };
 
   // ── BRANDS ───────────────────────────────────────────────────────────────────
@@ -161,6 +180,7 @@ export function StoreProvider({ children }) {
   const value = {
     ...state,
     resetAll,
+    clearAll,
     addBrand, editBrand, deleteBrand,
     addCategory, editCategory, deleteCategory,
     addSupplier, editSupplier, deleteSupplier,
