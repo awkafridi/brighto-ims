@@ -5,22 +5,33 @@ import { useTheme } from '../hooks/useTheme';
 import { Card, Modal, Input, Btn, PageHeader, Badge } from '../components/UI';
 import { PROVIDERS, getActiveProvider, setActiveProvider, getApiKey, setApiKey } from '../api/aiProvider';
 
-const SHEETS_URL_KEY = 'ims_sheets_webhook_url';
-const SHEETS_AUTOSAVE_KEY = 'ims_sheets_autosave';
+const SHEETS_URL_KEY    = 'ims_sheets_webhook_url';
+const SHEETS_AUTO_KEY   = 'ims_sheets_autosave';
+const USER_PROFILE_KEY  = 'ims_user';
+const USERS_KEY         = 'ims_users_list';
+
+function getUsers() {
+  try { return JSON.parse(localStorage.getItem(USERS_KEY) || '[]'); } catch { return []; }
+}
+function saveUsers(users) {
+  localStorage.setItem(USERS_KEY, JSON.stringify(users));
+}
+function getCurrentUser() {
+  try { return JSON.parse(localStorage.getItem(USER_PROFILE_KEY) || '{}'); } catch { return {}; }
+}
 
 export default function Settings() {
   const store = useStore();
   const { theme, toggleTheme } = useTheme();
-  const [sheetsUrl, setSheetsUrl] = useState(localStorage.getItem(SHEETS_URL_KEY) || '');
-  const [autosave, setAutosave] = useState(localStorage.getItem(SHEETS_AUTOSAVE_KEY) === 'true');
-  const [syncStatus, setSyncStatus] = useState(null); // null | 'syncing' | 'success' | 'error'
-  const [lastSync, setLastSync] = useState(localStorage.getItem('ims_last_sync') || null);
-  const [confirmClear, setConfirmClear] = useState(false);
-  const [confirmDemo, setConfirmDemo] = useState(false);
-  const [showGuide, setShowGuide] = useState(false);
+
+  // ── Google Sheets state ────────────────────────────────────────────────────
+  const [sheetsUrl, setSheetsUrl]   = useState(localStorage.getItem(SHEETS_URL_KEY) || '');
+  const [autosave, setAutosave]     = useState(localStorage.getItem(SHEETS_AUTO_KEY) === 'true');
+  const [syncStatus, setSyncStatus] = useState(null);
+  const [lastSync, setLastSync]     = useState(localStorage.getItem('ims_last_sync') || null);
   const syncTimeout = useRef(null);
 
-  // AI provider state
+  // ── AI provider state ──────────────────────────────────────────────────────
   const [activeProvider, setActiveProviderState] = useState(getActiveProvider());
   const [keys, setKeys] = useState(() => {
     const obj = {};
@@ -28,52 +39,53 @@ export default function Settings() {
     return obj;
   });
   const [savedFlash, setSavedFlash] = useState(null);
+  const [showKey, setShowKey] = useState(false);
 
-  // Save Sheets URL + autosave preference whenever they change
+  // ── Password / profile state ───────────────────────────────────────────────
+  const [currentUser] = useState(getCurrentUser);
+  const [pwForm, setPwForm]   = useState({ current: '', newPw: '', confirm: '' });
+  const [pwError, setPwError] = useState('');
+  const [pwSuccess, setPwSuccess] = useState('');
+  const [profileForm, setProfileForm] = useState({ username: currentUser.username || 'admin', fullName: currentUser.name || 'Admin' });
+  const [profileSaved, setProfileSaved] = useState(false);
+
+  // ── Business info state ────────────────────────────────────────────────────
+  const [bizForm, setBizForm] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('ims_biz_info') || '{}'); } catch { return {}; }
+  });
+  const [bizSaved, setBizSaved] = useState(false);
+
+  // ── Data management state ──────────────────────────────────────────────────
+  const [confirmClear, setConfirmClear] = useState(false);
+  const [confirmDemo,  setConfirmDemo]  = useState(false);
+  const [showGuide, setShowGuide]       = useState(false);
+
+  // Auto-save to Sheets on data change
   useEffect(() => {
     localStorage.setItem(SHEETS_URL_KEY, sheetsUrl);
   }, [sheetsUrl]);
-
   useEffect(() => {
-    localStorage.setItem(SHEETS_AUTOSAVE_KEY, String(autosave));
+    localStorage.setItem(SHEETS_AUTO_KEY, String(autosave));
   }, [autosave]);
-
-  // Auto-sync whenever store data changes, if enabled
   useEffect(() => {
     if (!autosave || !sheetsUrl) return;
     if (syncTimeout.current) clearTimeout(syncTimeout.current);
-    syncTimeout.current = setTimeout(() => {
-      syncToSheets(true);
-    }, 2000); // debounce so rapid edits don't spam requests
+    syncTimeout.current = setTimeout(() => syncToSheets(true), 2500);
     return () => clearTimeout(syncTimeout.current);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [store.products, store.shopkeepers, store.invoices, store.suppliers, store.expenses, store.ledgerEntries, autosave, sheetsUrl]);
 
   const syncToSheets = async (silent = false) => {
-    if (!sheetsUrl) {
-      if (!silent) setSyncStatus('error');
-      return;
-    }
+    if (!sheetsUrl) { if (!silent) setSyncStatus('error'); return; }
     setSyncStatus('syncing');
     try {
-      const payload = {
-        brands: store.brands,
-        categories: store.categories,
-        suppliers: store.suppliers,
-        products: store.products,
-        batches: store.batches,
-        shopkeepers: store.shopkeepers,
-        invoices: store.invoices,
-        ledgerEntries: store.ledgerEntries,
-        expenses: store.expenses,
-      };
-      // Apps Script web apps require no-cors from browser fetch in many setups;
-      // we use mode: 'no-cors' so the request isn't blocked, and treat it optimistically.
       await fetch(sheetsUrl, {
-        method: 'POST',
-        mode: 'no-cors',
+        method: 'POST', mode: 'no-cors',
         headers: { 'Content-Type': 'text/plain' },
-        body: JSON.stringify(payload),
+        body: JSON.stringify({
+          brands: store.brands, categories: store.categories, suppliers: store.suppliers,
+          products: store.products, batches: store.batches, shopkeepers: store.shopkeepers,
+          invoices: store.invoices, ledgerEntries: store.ledgerEntries, expenses: store.expenses,
+        }),
       });
       const now = new Date().toLocaleString();
       localStorage.setItem('ims_last_sync', now);
@@ -81,248 +93,294 @@ export default function Settings() {
       setSyncStatus('success');
       setTimeout(() => setSyncStatus(null), 3000);
     } catch (e) {
-      console.error('Sheets sync failed', e);
       setSyncStatus('error');
       setTimeout(() => setSyncStatus(null), 4000);
     }
   };
 
-  const handleClearAll = () => {
-    if (confirmClear) {
-      store.clearAll();
-      setConfirmClear(false);
-    } else {
-      setConfirmClear(true);
-      setTimeout(() => setConfirmClear(false), 4000);
-    }
-  };
-
-  const handleRestoreDemo = () => {
-    if (confirmDemo) {
-      store.resetAll();
-      setConfirmDemo(false);
-    } else {
-      setConfirmDemo(true);
-      setTimeout(() => setConfirmDemo(false), 4000);
-    }
-  };
-
-  const handleProviderSelect = (id) => {
-    setActiveProviderState(id);
-    setActiveProvider(id);
-  };
-
-  const handleKeyChange = (id, value) => {
-    setKeys(prev => ({ ...prev, [id]: value }));
-  };
-
+  // ── AI provider handlers ───────────────────────────────────────────────────
+  const handleProviderSelect = (id) => { setActiveProviderState(id); setActiveProvider(id); };
+  const handleKeyChange = (id, val) => setKeys(prev => ({ ...prev, [id]: val }));
   const handleKeySave = (id) => {
     setApiKey(id, keys[id]);
     setSavedFlash(id);
     setTimeout(() => setSavedFlash(null), 2000);
   };
 
+  // ── Password change ────────────────────────────────────────────────────────
+  const handlePasswordChange = () => {
+    setPwError(''); setPwSuccess('');
+    const user = getCurrentUser();
+    const users = getUsers();
+    const CREDENTIALS = [
+      { username: 'admin', password: 'admin123' },
+      { username: 'staff', password: 'staff123' },
+      ...users,
+    ];
+    const match = CREDENTIALS.find(c => c.username === user.username && c.password === pwForm.current);
+    if (!match) { setPwError('Current password is incorrect.'); return; }
+    if (pwForm.newPw.length < 6) { setPwError('New password must be at least 6 characters.'); return; }
+    if (pwForm.newPw !== pwForm.confirm) { setPwError('New passwords do not match.'); return; }
+
+    // Save updated password
+    const updatedUsers = users.filter(u => u.username !== user.username);
+    updatedUsers.push({ username: user.username, password: pwForm.newPw, name: user.name, role: user.role });
+    saveUsers(updatedUsers);
+    setPwForm({ current: '', newPw: '', confirm: '' });
+    setPwSuccess('✓ Password changed successfully!');
+  };
+
+  // ── Profile update ─────────────────────────────────────────────────────────
+  const handleProfileSave = () => {
+    const user = getCurrentUser();
+    const updated = { ...user, username: profileForm.username, name: profileForm.fullName };
+    localStorage.setItem(USER_PROFILE_KEY, JSON.stringify(updated));
+    setProfileSaved(true);
+    setTimeout(() => setProfileSaved(false), 2500);
+  };
+
+  // ── Business info save ─────────────────────────────────────────────────────
+  const handleBizSave = () => {
+    localStorage.setItem('ims_biz_info', JSON.stringify(bizForm));
+    setBizSaved(true);
+    setTimeout(() => setBizSaved(false), 2500);
+  };
+
+  // ── Excel export ───────────────────────────────────────────────────────────
   const exportToExcel = () => {
     const wb = XLSX.utils.book_new();
-
     const sheets = {
       Products: store.products,
       Suppliers: store.suppliers,
-      Batches: store.batches,
       Shopkeepers: store.shopkeepers,
-      Invoices: store.invoices.map(inv => ({
-        ...inv,
-        items: JSON.stringify(inv.items || []), // flatten nested array for Excel
-      })),
+      Invoices: store.invoices.map(i => ({ ...i, items: JSON.stringify(i.items || []) })),
       Ledger: store.ledgerEntries,
       Expenses: store.expenses,
     };
-
     Object.entries(sheets).forEach(([name, rows]) => {
-      if (rows && rows.length > 0) {
-        const ws = XLSX.utils.json_to_sheet(rows);
-        XLSX.utils.book_append_sheet(wb, ws, name);
-      }
+      if (rows?.length) XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows), name);
     });
-
-    const dateStr = new Date().toISOString().split('T')[0];
-    XLSX.writeFile(wb, `brighto-ims-export-${dateStr}.xlsx`);
+    XLSX.writeFile(wb, `brighto-ims-export-${new Date().toISOString().split('T')[0]}.xlsx`);
   };
+
+  const handleClearAll = () => {
+    if (confirmClear) { store.clearAll(); setConfirmClear(false); }
+    else { setConfirmClear(true); setTimeout(() => setConfirmClear(false), 4000); }
+  };
+  const handleRestoreDemo = () => {
+    if (confirmDemo) { store.resetAll(); setConfirmDemo(false); }
+    else { setConfirmDemo(true); setTimeout(() => setConfirmDemo(false), 4000); }
+  };
+
+  const section = (title, children) => (
+    <Card style={{ marginBottom: 14 }}>
+      <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 14, paddingBottom: 10, borderBottom: '0.5px solid var(--border)', color: 'var(--text)' }}>{title}</div>
+      {children}
+    </Card>
+  );
 
   return (
     <div>
-      <PageHeader title="Settings" subtitle="Appearance, data backup, and export options" />
+      <PageHeader title="Settings" subtitle="Account, appearance, AI, data management" />
 
-      {/* Appearance */}
-      <Card style={{ marginBottom: 16 }}>
-        <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 14 }}>🎨 Appearance</div>
+      {/* ── Appearance ── */}
+      {section('🎨 Appearance', (
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div>
             <div style={{ fontSize: 13, fontWeight: 500 }}>Theme</div>
-            <div style={{ fontSize: 12, color: 'var(--text2)' }}>Currently using {theme === 'dark' ? 'Dark' : 'Light'} mode</div>
+            <div style={{ fontSize: 12, color: 'var(--text2)', marginTop: 2 }}>Currently: {theme === 'dark' ? 'Dark mode 🌙' : 'Light mode ☀️'}</div>
           </div>
-          <div style={{ display: 'flex', background: 'var(--bg3)', borderRadius: 20, padding: 3, border: '0.5px solid var(--border2)' }}>
-            <button onClick={() => theme !== 'dark' && toggleTheme()} style={{
-              padding: '6px 16px', borderRadius: 20, fontSize: 12, fontWeight: 600,
-              background: theme === 'dark' ? 'var(--accent)' : 'transparent',
-              color: theme === 'dark' ? '#fff' : 'var(--text2)', border: 'none', cursor: 'pointer', transition: 'all 0.2s'
-            }}>🌙 Dark</button>
-            <button onClick={() => theme !== 'light' && toggleTheme()} style={{
-              padding: '6px 16px', borderRadius: 20, fontSize: 12, fontWeight: 600,
-              background: theme === 'light' ? 'var(--accent)' : 'transparent',
-              color: theme === 'light' ? '#fff' : 'var(--text2)', border: 'none', cursor: 'pointer', transition: 'all 0.2s'
-            }}>☀️ Light</button>
+          <div style={{ display: 'flex', background: 'var(--bg3)', borderRadius: 20, padding: 3 }}>
+            {['dark','light'].map(t => (
+              <button key={t} onClick={() => theme !== t && toggleTheme()} style={{
+                padding: '6px 18px', borderRadius: 20, fontSize: 12, fontWeight: 600,
+                background: theme === t ? 'var(--accent)' : 'transparent',
+                color: theme === t ? '#fff' : 'var(--text2)', border: 'none', cursor: 'pointer', transition: 'all 0.2s'
+              }}>{t === 'dark' ? '🌙 Dark' : '☀️ Light'}</button>
+            ))}
           </div>
         </div>
-      </Card>
+      ))}
 
-      {/* AI Provider Selection */}
-      <Card style={{ marginBottom: 16 }}>
-        <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 4 }}>🧠 AI Provider (for OCR & Voice parsing)</div>
-        <div style={{ fontSize: 12, color: 'var(--text2)', marginBottom: 16 }}>
-          Pick a free AI service for invoice scanning and voice commands. Each needs its own free API key from the provider — your key stays only in this browser, never sent anywhere except directly to that provider.
-        </div>
+      {/* ── Business info ── */}
+      {section('🏢 Business Information', (
+        <>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+            <Input label="Business / Brand name" value={bizForm.businessName || ''} onChange={e => setBizForm(f => ({ ...f, businessName: e.target.value }))} placeholder="e.g. Brighto Lights" />
+            <Input label="Owner name" value={bizForm.ownerName || ''} onChange={e => setBizForm(f => ({ ...f, ownerName: e.target.value }))} placeholder="e.g. Ahmed Karimi" />
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+            <Input label="Phone / WhatsApp" value={bizForm.phone || ''} onChange={e => setBizForm(f => ({ ...f, phone: e.target.value }))} placeholder="+92-300-0000000" />
+            <Input label="NTN / Tax number (optional)" value={bizForm.ntn || ''} onChange={e => setBizForm(f => ({ ...f, ntn: e.target.value }))} placeholder="NTN-0000000-0" />
+          </div>
+          <Input label="Address" value={bizForm.address || ''} onChange={e => setBizForm(f => ({ ...f, address: e.target.value }))} placeholder="Warehouse / Office address" />
+          <Input label="Invoice footer message (shown on invoices)" value={bizForm.invoiceNote || ''} onChange={e => setBizForm(f => ({ ...f, invoiceNote: e.target.value }))} placeholder="e.g. Thank you for your business! Returns accepted within 7 days." />
+          <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+            <Btn onClick={handleBizSave}>{bizSaved ? '✓ Saved!' : 'Save business info'}</Btn>
+          </div>
+        </>
+      ))}
 
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px,1fr))', gap: 10, marginBottom: 16 }}>
-          {Object.values(PROVIDERS).map(p => (
-            <div key={p.id} onClick={() => handleProviderSelect(p.id)} style={{
-              padding: '12px 14px', borderRadius: 'var(--radius)', cursor: 'pointer',
-              background: activeProvider === p.id ? 'var(--accent-dim)' : 'var(--bg3)',
-              border: activeProvider === p.id ? '1.5px solid var(--accent)' : '0.5px solid var(--border2)',
-              transition: 'all 0.15s'
-            }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-                <span style={{ fontWeight: 600, fontSize: 13 }}>{p.icon} {p.name}</span>
-                {activeProvider === p.id && <Badge color="accent">Active</Badge>}
-              </div>
-              <div style={{ fontSize: 11, color: 'var(--text3)', marginBottom: 2 }}>
-                {p.supportsVision ? '✓ Supports invoice photo scanning' : '✗ Voice commands only (no photo OCR)'}
-              </div>
-              <div style={{ fontSize: 11, color: getApiKey(p.id) ? 'var(--green)' : 'var(--amber)' }}>
-                {getApiKey(p.id) ? '✓ Key configured' : '⚠ No key yet'}
-              </div>
+      {/* ── Profile / Password ── */}
+      {section('👤 Account & Password', (
+        <>
+          <div style={{ marginBottom: 16 }}>
+            <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 10 }}>Profile</div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+              <Input label="Username" value={profileForm.username} onChange={e => setProfileForm(f => ({ ...f, username: e.target.value }))} placeholder="admin" />
+              <Input label="Full name" value={profileForm.fullName} onChange={e => setProfileForm(f => ({ ...f, fullName: e.target.value }))} placeholder="Your name" />
             </div>
-          ))}
-        </div>
-
-        {/* Key input for currently selected provider */}
-        <div style={{ background: 'var(--bg3)', borderRadius: 'var(--radius)', padding: 14, border: '0.5px solid var(--border2)' }}>
-          <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 4 }}>
-            {PROVIDERS[activeProvider].icon} {PROVIDERS[activeProvider].keyLabel}
+            <Btn onClick={handleProfileSave}>{profileSaved ? '✓ Saved!' : 'Save profile'}</Btn>
           </div>
-          <div style={{ fontSize: 11, color: 'var(--text2)', marginBottom: 10 }}>
-            {PROVIDERS[activeProvider].keyHelp}
+
+          <div style={{ borderTop: '0.5px solid var(--border)', paddingTop: 14 }}>
+            <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 10 }}>Change password</div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10 }}>
+              <div style={{ marginBottom: 14 }}>
+                <div style={{ fontSize: 12, color: 'var(--text2)', marginBottom: 5, fontWeight: 500 }}>Current password</div>
+                <div style={{ position: 'relative' }}>
+                  <input type={showKey ? 'text' : 'password'} value={pwForm.current} onChange={e => setPwForm(f => ({ ...f, current: e.target.value }))} placeholder="••••••••"
+                    style={{ width: '100%', padding: '8px 36px 8px 12px', background: 'var(--bg3)', border: '0.5px solid var(--border2)', borderRadius: 'var(--radius)', color: 'var(--text)', outline: 'none', fontSize: 13, boxSizing: 'border-box' }} />
+                  <button onClick={() => setShowKey(s => !s)} style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: 'var(--text3)', cursor: 'pointer', fontSize: 13 }}>{showKey ? '🙈' : '👁'}</button>
+                </div>
+              </div>
+              <Input label="New password" type="password" value={pwForm.newPw} onChange={e => setPwForm(f => ({ ...f, newPw: e.target.value }))} placeholder="min 6 characters" />
+              <Input label="Confirm new password" type="password" value={pwForm.confirm} onChange={e => setPwForm(f => ({ ...f, confirm: e.target.value }))} placeholder="repeat new password" />
+            </div>
+            {pwError && <div style={{ color: 'var(--red)', fontSize: 12, padding: '6px 10px', background: 'var(--red-dim)', borderRadius: 'var(--radius)', marginBottom: 10 }}>⚠ {pwError}</div>}
+            {pwSuccess && <div style={{ color: 'var(--green)', fontSize: 12, padding: '6px 10px', background: 'var(--green-dim)', borderRadius: 'var(--radius)', marginBottom: 10 }}>{pwSuccess}</div>}
+            <Btn onClick={handlePasswordChange}>🔒 Change password</Btn>
+          </div>
+
+          <div style={{ borderTop: '0.5px solid var(--border)', paddingTop: 14, marginTop: 4 }}>
+            <div style={{ fontSize: 12, color: 'var(--text3)', marginBottom: 8 }}>
+              💡 Default credentials: <code style={{ background: 'var(--bg3)', padding: '1px 6px', borderRadius: 4 }}>admin / admin123</code> and <code style={{ background: 'var(--bg3)', padding: '1px 6px', borderRadius: 4 }}>staff / staff123</code>. Change these above for real use.
+            </div>
+          </div>
+        </>
+      ))}
+
+      {/* ── AI Provider ── */}
+      {section('🧠 AI Provider (OCR & Voice)', (
+        <>
+          <div style={{ fontSize: 12, color: 'var(--text2)', marginBottom: 14 }}>
+            Pick a free AI for invoice scanning and voice commands. Your key stays only in this browser.
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px,1fr))', gap: 10, marginBottom: 14 }}>
+            {Object.values(PROVIDERS).map(p => (
+              <div key={p.id} onClick={() => handleProviderSelect(p.id)} style={{
+                padding: '12px 14px', borderRadius: 'var(--radius)', cursor: 'pointer',
+                background: activeProvider === p.id ? 'var(--accent-dim)' : 'var(--bg3)',
+                border: activeProvider === p.id ? '1.5px solid var(--accent)' : '0.5px solid var(--border2)',
+                transition: 'all 0.15s'
+              }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+                  <span style={{ fontWeight: 600, fontSize: 13 }}>{p.icon} {p.name}</span>
+                  {activeProvider === p.id && <Badge color="accent">Active</Badge>}
+                </div>
+                <div style={{ fontSize: 11, color: p.supportsVision ? 'var(--green)' : 'var(--text3)' }}>
+                  {p.supportsVision ? '✓ Supports photo OCR' : '✗ Voice only'}
+                </div>
+                <div style={{ fontSize: 11, color: getApiKey(p.id) ? 'var(--green)' : 'var(--amber)', marginTop: 2 }}>
+                  {getApiKey(p.id) ? '✓ Key saved' : '⚠ No key yet'}
+                </div>
+              </div>
+            ))}
+          </div>
+          <div style={{ background: 'var(--bg3)', borderRadius: 'var(--radius)', padding: 14 }}>
+            <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 2 }}>{PROVIDERS[activeProvider].icon} {PROVIDERS[activeProvider].keyLabel}</div>
+            <div style={{ fontSize: 11, color: 'var(--text2)', marginBottom: 10 }}>{PROVIDERS[activeProvider].keyHelp}</div>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <input type="password" placeholder={PROVIDERS[activeProvider].keyPlaceholder} value={keys[activeProvider]}
+                onChange={e => handleKeyChange(activeProvider, e.target.value)}
+                style={{ flex: 1, padding: '8px 12px', background: 'var(--bg)', border: '0.5px solid var(--border2)', borderRadius: 'var(--radius)', color: 'var(--text)', outline: 'none', fontSize: 13 }}
+              />
+              <Btn onClick={() => handleKeySave(activeProvider)}>{savedFlash === activeProvider ? '✓ Saved!' : 'Save key'}</Btn>
+            </div>
+          </div>
+        </>
+      ))}
+
+      {/* ── Google Sheets Sync ── */}
+      {section('📊 Google Sheets Backup', (
+        <>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 }}>
+            <div style={{ fontSize: 12, color: 'var(--text2)' }}>Auto-backup every change to your own Google Sheet — free, no credit card.</div>
+            {syncStatus === 'syncing' && <Badge color="amber">Syncing...</Badge>}
+            {syncStatus === 'success' && <Badge color="green">✓ Synced</Badge>}
+            {syncStatus === 'error'   && <Badge color="red">Failed</Badge>}
+          </div>
+          <Input label="Google Apps Script Web App URL" placeholder="https://script.google.com/macros/s/.../exec" value={sheetsUrl} onChange={e => setSheetsUrl(e.target.value)} />
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, cursor: 'pointer' }}>
+              <input type="checkbox" checked={autosave} onChange={e => setAutosave(e.target.checked)} style={{ width: 15, height: 15 }} />
+              Auto-save on every change
+            </label>
+            {lastSync && <span style={{ fontSize: 11, color: 'var(--text3)' }}>Last synced: {lastSync}</span>}
           </div>
           <div style={{ display: 'flex', gap: 8 }}>
-            <input
-              type="password"
-              placeholder={PROVIDERS[activeProvider].keyPlaceholder}
-              value={keys[activeProvider]}
-              onChange={e => handleKeyChange(activeProvider, e.target.value)}
-              style={{ flex: 1, padding: '8px 12px', background: 'var(--bg)', border: '0.5px solid var(--border2)', borderRadius: 'var(--radius)', color: 'var(--text)', outline: 'none', fontSize: 13 }}
-            />
-            <Btn onClick={() => handleKeySave(activeProvider)}>
-              {savedFlash === activeProvider ? '✓ Saved' : 'Save key'}
+            <Btn onClick={() => syncToSheets(false)} style={{ opacity: !sheetsUrl ? 0.5 : 1 }}>📤 Sync now</Btn>
+            <Btn variant="ghost" onClick={() => setShowGuide(true)}>📖 Setup guide</Btn>
+          </div>
+        </>
+      ))}
+
+      {/* ── Export ── */}
+      {section('📥 Export Data', (
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
+          <Btn onClick={exportToExcel}>⬇ Download Excel (.xlsx)</Btn>
+          <span style={{ fontSize: 12, color: 'var(--text3)' }}>Exports all products, suppliers, shopkeepers, invoices, ledger, and expenses into one file.</span>
+        </div>
+      ))}
+
+      {/* ── Data Management ── */}
+      {section('🗑 Data Management', (
+        <>
+          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 12 }}>
+            <Btn variant="danger" onClick={handleClearAll}>
+              {confirmClear ? '⚠ Click again to confirm — clears everything' : '🗑 Clear all data (start fresh)'}
+            </Btn>
+            <Btn variant="ghost" onClick={handleRestoreDemo}>
+              {confirmDemo ? '⚠ Click again — loads sample data' : '↺ Restore demo data'}
             </Btn>
           </div>
-        </div>
-
-        <div style={{ marginTop: 12, fontSize: 11, color: 'var(--text3)', lineHeight: 1.6 }}>
-          💡 <strong>Tip:</strong> Only Gemini supports scanning invoice photos (OCR). Grok, DeepSeek, and OpenChat work great for voice commands (turning spoken sentences into structured data) but can't read images.
-        </div>
-      </Card>
-
-      {/* Google Sheets Sync */}
-      <Card style={{ marginBottom: 16 }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 14 }}>
-          <div>
-            <div style={{ fontWeight: 600, fontSize: 14 }}>📊 Google Sheets Backup</div>
-            <div style={{ fontSize: 12, color: 'var(--text2)', marginTop: 2 }}>Automatically save your data to a Google Sheet you own</div>
+          <div style={{ fontSize: 11, color: 'var(--text3)', lineHeight: 1.7 }}>
+            <strong>Clear all data</strong> — removes every product, invoice, shopkeeper, and transaction. Brands and categories are kept.<br/>
+            <strong>Restore demo data</strong> — reloads the original 85 sample products and demo shopkeepers for testing.
           </div>
-          {syncStatus === 'syncing' && <Badge color="amber">Syncing...</Badge>}
-          {syncStatus === 'success' && <Badge color="green">✓ Synced</Badge>}
-          {syncStatus === 'error' && <Badge color="red">Sync failed</Badge>}
+        </>
+      ))}
+
+      {/* ── App Info ── */}
+      {section('ℹ About', (
+        <div style={{ fontSize: 12, color: 'var(--text2)', lineHeight: 1.8 }}>
+          <div><strong>StockLedger IMS</strong> — Inventory & Ledger Management</div>
+          <div>Version: <Badge color="accent">v10</Badge></div>
+          <div>Data storage: Browser localStorage (offline-ready)</div>
+          <div>Hosting: GitHub Pages (free)</div>
+          <div style={{ marginTop: 8, color: 'var(--text3)' }}>Built for Brighto & Hoshi wholesale electrical business</div>
         </div>
+      ))}
 
-        <Input
-          label="Google Apps Script Web App URL"
-          placeholder="https://script.google.com/macros/s/XXXXX/exec"
-          value={sheetsUrl}
-          onChange={e => setSheetsUrl(e.target.value)}
-        />
-
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <input type="checkbox" id="autosave" checked={autosave} onChange={e => setAutosave(e.target.checked)} style={{ width: 16, height: 16, cursor: 'pointer' }} />
-            <label htmlFor="autosave" style={{ fontSize: 13, cursor: 'pointer' }}>Auto-save on every change</label>
+      {showGuide && (
+        <Modal title="📊 Connect Google Sheets — Free Setup" onClose={() => setShowGuide(false)} width={620}>
+          <ol style={{ paddingLeft: 20, display: 'flex', flexDirection: 'column', gap: 12, fontSize: 13, lineHeight: 1.7, color: 'var(--text2)' }}>
+            <li>Go to <strong style={{ color: 'var(--text)' }}>sheets.google.com</strong> → create a new blank spreadsheet</li>
+            <li>Click <strong style={{ color: 'var(--text)' }}>Extensions → Apps Script</strong></li>
+            <li>Delete any code shown, paste in the script from <code style={{ background: 'var(--bg3)', padding: '1px 6px', borderRadius: 4 }}>GOOGLE_APPS_SCRIPT.gs</code> (inside your app zip)</li>
+            <li>Click <strong style={{ color: 'var(--text)' }}>Save</strong> → then <strong style={{ color: 'var(--text)' }}>Deploy → New deployment</strong></li>
+            <li>Type: <strong style={{ color: 'var(--text)' }}>Web app</strong> — Execute as: Me — Who has access: Anyone</li>
+            <li>Click <strong style={{ color: 'var(--text)' }}>Deploy</strong> → copy the URL it shows</li>
+            <li>Paste that URL above and click <strong style={{ color: 'var(--text)' }}>Sync now</strong></li>
+          </ol>
+          <div style={{ marginTop: 14, padding: '10px 14px', background: 'var(--accent-dim)', borderRadius: 'var(--radius)', fontSize: 12, color: 'var(--accent)' }}>
+            💡 Completely free — uses your Google account's Apps Script quota. No credit card needed.
           </div>
-          {lastSync && <span style={{ fontSize: 11, color: 'var(--text3)' }}>Last synced: {lastSync}</span>}
-        </div>
-
-        <div style={{ display: 'flex', gap: 8 }}>
-          <Btn onClick={() => syncToSheets(false)} disabled={!sheetsUrl}>📤 Sync now</Btn>
-          <Btn variant="ghost" onClick={() => setShowGuide(true)}>📖 How to set this up</Btn>
-        </div>
-
-        {!sheetsUrl && (
-          <div style={{ marginTop: 12, padding: '10px 14px', background: 'var(--amber-dim)', borderRadius: 'var(--radius)', fontSize: 12, color: 'var(--amber)' }}>
-            ⚠ Not connected yet — click "How to set this up" below for a free 5-minute setup using your own Google account.
+          <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 14 }}>
+            <Btn onClick={() => setShowGuide(false)}>Got it</Btn>
           </div>
-        )}
-      </Card>
-
-      {/* Excel Export */}
-      <Card style={{ marginBottom: 16 }}>
-        <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 4 }}>📥 Export to Excel</div>
-        <div style={{ fontSize: 12, color: 'var(--text2)', marginBottom: 14 }}>Download all your data as an .xlsx file you can open in Excel or Google Sheets</div>
-        <Btn onClick={exportToExcel}>⬇ Download Excel file</Btn>
-      </Card>
-
-      {/* Data Management */}
-      <Card>
-        <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 4 }}>🗑 Data Management</div>
-        <div style={{ fontSize: 12, color: 'var(--text2)', marginBottom: 16 }}>Be careful — these actions affect all your saved data</div>
-
-        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-          <Btn variant="danger" onClick={handleClearAll}>
-            {confirmClear ? '⚠ Click again to confirm — deletes everything' : '🗑 Clear all data (start fresh)'}
-          </Btn>
-          <Btn variant="ghost" onClick={handleRestoreDemo}>
-            {confirmDemo ? '⚠ Click again — replaces with demo data' : '↺ Restore demo/sample data'}
-          </Btn>
-        </div>
-        <div style={{ marginTop: 12, fontSize: 11, color: 'var(--text3)', lineHeight: 1.6 }}>
-          <strong>Clear all data</strong> removes every product, invoice, shopkeeper, and transaction — keeping only your brand and category names. Use this once you're ready to start entering real business data.<br/>
-          <strong>Restore demo data</strong> brings back the original sample data for exploring features.
-        </div>
-      </Card>
-
-      {showGuide && <SheetsGuide onClose={() => setShowGuide(false)} />}
+        </Modal>
+      )}
     </div>
-  );
-}
-
-function SheetsGuide({ onClose }) {
-  return (
-    <Modal title="📊 Connect Google Sheets (Free, 5 minutes)" onClose={onClose} width={620}>
-      <ol style={{ paddingLeft: 20, display: 'flex', flexDirection: 'column', gap: 14, fontSize: 13, lineHeight: 1.6 }}>
-        <li>Go to <strong>sheets.google.com</strong> and create a new blank spreadsheet. Name it anything, like "Brighto IMS Data".</li>
-        <li>Click <strong>Extensions → Apps Script</strong> in the menu bar.</li>
-        <li>Delete any code shown, then paste in the script from the <code style={{ background: 'var(--bg3)', padding: '1px 6px', borderRadius: 4 }}>GOOGLE_APPS_SCRIPT.gs</code> file that came with your app download.</li>
-        <li>Click the <strong>Save</strong> icon (floppy disk).</li>
-        <li>Click <strong>Deploy</strong> (top right) → <strong>New deployment</strong>.</li>
-        <li>Click the gear icon ⚙ next to "Select type" → choose <strong>Web app</strong>.</li>
-        <li>Set <strong>Execute as</strong> = Me, and <strong>Who has access</strong> = Anyone.</li>
-        <li>Click <strong>Deploy</strong>. Google may ask you to authorize — click through and allow it (it's your own script, on your own account).</li>
-        <li>Copy the URL shown (looks like <code style={{ background: 'var(--bg3)', padding: '1px 6px', borderRadius: 4, fontSize: 11 }}>https://script.google.com/macros/s/.../exec</code>).</li>
-        <li>Paste that URL into the "Google Apps Script Web App URL" field on this Settings page, then click <strong>Sync now</strong>.</li>
-      </ol>
-      <div style={{ marginTop: 16, padding: '10px 14px', background: 'var(--accent-dim)', borderRadius: 'var(--radius)', fontSize: 12, color: 'var(--accent)' }}>
-        💡 This is completely free — it uses your own Google account's free Apps Script quota, with no credit card or sign-up needed beyond your existing Google account.
-      </div>
-      <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 16 }}>
-        <Btn onClick={onClose}>Got it</Btn>
-      </div>
-    </Modal>
   );
 }
