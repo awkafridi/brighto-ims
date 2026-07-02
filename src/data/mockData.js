@@ -19,14 +19,14 @@ export const suppliers = [
 ];
 
 export const products = [
-  { id: 'p1', name: '12W LED Bulb', sku: 'BRT-LED-12W', brandId: 'b1', categoryId: 'c1', unit: 'pcs', avgCost: 95, stock: 840 },
-  { id: 'p2', name: '18W Panel Light', sku: 'BRT-PNL-18W', brandId: 'b1', categoryId: 'c2', unit: 'pcs', avgCost: 320, stock: 215 },
-  { id: 'p3', name: '7W LED Bulb', sku: 'HSH-LED-7W', brandId: 'b2', categoryId: 'c1', unit: 'pcs', avgCost: 65, stock: 1200 },
-  { id: 'p4', name: '3-Pin Socket', sku: 'BRT-SCK-3P', brandId: 'b1', categoryId: 'c4', unit: 'pcs', avgCost: 55, stock: 430 },
-  { id: 'p5', name: '2.5mm Cable (100m)', sku: 'BRT-CBL-25', brandId: 'b1', categoryId: 'c3', unit: 'roll', avgCost: 2800, stock: 48 },
-  { id: 'p6', name: '24W Panel Light', sku: 'HSH-PNL-24W', brandId: 'b2', categoryId: 'c2', unit: 'pcs', avgCost: 420, stock: 180 },
-  { id: 'p7', name: 'DB Box 8-way', sku: 'BRT-DB-8W', brandId: 'b1', categoryId: 'c5', unit: 'pcs', avgCost: 650, stock: 75 },
-  { id: 'p8', name: '20W Tube Light', sku: 'HSH-TUB-20W', brandId: 'b2', categoryId: 'c6', unit: 'pcs', avgCost: 180, stock: 320 },
+  { id: 'p1', name: '12W LED Bulb', sku: 'BRT-LED-12W', brandId: 'b1', categoryId: 'c1', unit: 'pcs', avgCost: 95, sellingPrice: 150, stock: 840 },
+  { id: 'p2', name: '18W Panel Light', sku: 'BRT-PNL-18W', brandId: 'b1', categoryId: 'c2', unit: 'pcs', avgCost: 320, sellingPrice: 500, stock: 215 },
+  { id: 'p3', name: '7W LED Bulb', sku: 'HSH-LED-7W', brandId: 'b2', categoryId: 'c1', unit: 'pcs', avgCost: 65, sellingPrice: 100, stock: 1200 },
+  { id: 'p4', name: '3-Pin Socket', sku: 'BRT-SCK-3P', brandId: 'b1', categoryId: 'c4', unit: 'pcs', avgCost: 55, sellingPrice: 90, stock: 430 },
+  { id: 'p5', name: '2.5mm Cable (100m)', sku: 'BRT-CBL-25', brandId: 'b1', categoryId: 'c3', unit: 'roll', avgCost: 2800, sellingPrice: 3500, stock: 48 },
+  { id: 'p6', name: '24W Panel Light', sku: 'HSH-PNL-24W', brandId: 'b2', categoryId: 'c2', unit: 'pcs', avgCost: 420, sellingPrice: 650, stock: 180 },
+  { id: 'p7', name: 'DB Box 8-way', sku: 'BRT-DB-8W', brandId: 'b1', categoryId: 'c5', unit: 'pcs', avgCost: 650, sellingPrice: 950, stock: 75 },
+  { id: 'p8', name: '20W Tube Light', sku: 'HSH-TUB-20W', brandId: 'b2', categoryId: 'c6', unit: 'pcs', avgCost: 180, sellingPrice: 280, stock: 320 },
 ];
 
 export const batches = [

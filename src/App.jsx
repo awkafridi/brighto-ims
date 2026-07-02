@@ -11,6 +11,7 @@ import Invoices from './pages/Invoices';
 import Ledger from './pages/Ledger';
 import Expenses from './pages/Expenses';
 import Settings from './pages/Settings';
+import ImportData from './pages/ImportData';
 import Login from './pages/Login';
 import { OCRScanner, VoiceInput, AIFab } from './components/AIFeatures';
 
@@ -34,6 +35,7 @@ function ProtectedLayout({ activeBrand, setActiveBrand }) {
           <Route path="/invoices" element={<Invoices activeBrand={activeBrand} prefill={ocrPrefill} />} />
           <Route path="/ledger" element={<Ledger />} />
           <Route path="/expenses" element={<Expenses activeBrand={activeBrand} />} />
+          <Route path="/import" element={<ImportData />} />
           <Route path="/settings" element={<Settings />} />
         </Routes>
       </main>

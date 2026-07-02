@@ -7,8 +7,14 @@ function fmt(n) {
 
 export function openWhatsApp(phone, message) {
   const cleanPhone = (phone || '').replace(/[^0-9]/g, '');
+  if (!cleanPhone) {
+    alert('No phone number saved for this shopkeeper. Please edit their profile and add a phone number first.');
+    return;
+  }
   const encoded = encodeURIComponent(message);
-  window.open(`https://wa.me/${cleanPhone}?text=${encoded}`, '_blank');
+  // Use location.href instead of window.open — works on GitHub Pages and mobile browsers
+  // where popups are blocked. Opens WhatsApp in the same tab; user presses Back to return.
+  window.location.href = `https://wa.me/${cleanPhone}?text=${encoded}`;
 }
 
 // Sent right after a new invoice/sale is created

@@ -121,14 +121,15 @@ export function Input({ label, ...props }) {
   );
 }
 
-export function Select({ label, children, ...props }) {
+export function Select({ label, children, wrapStyle = {}, ...props }) {
   return (
-    <div style={{ marginBottom: 14 }}>
+    <div style={{ marginBottom: 14, ...wrapStyle }}>
       {label && <div style={{ fontSize: 12, color: 'var(--text2)', marginBottom: 5, fontWeight: 500 }}>{label}</div>}
       <select {...props} style={{
         width: '100%', padding: '8px 12px', background: 'var(--bg3)',
         border: '0.5px solid var(--border2)', borderRadius: 'var(--radius)',
-        color: 'var(--text)', outline: 'none', ...(props.style || {})
+        color: 'var(--text)', outline: 'none',
+        ...(props.style || {})
       }}>{children}</select>
     </div>
   );

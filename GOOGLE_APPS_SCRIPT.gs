@@ -1,328 +1,126 @@
-import { useState, useEffect, useRef } from 'react';
-import * as XLSX from 'xlsx';
-import { useStore } from '../data/store';
-import { useTheme } from '../hooks/useTheme';
-import { Card, Modal, Input, Btn, PageHeader, Badge } from '../components/UI';
-import { PROVIDERS, getActiveProvider, setActiveProvider, getApiKey, setApiKey } from '../api/aiProvider';
+/**
+ * GOOGLE APPS SCRIPT — Paste this into a Google Sheet's Apps Script editor.
+ * This acts as a FREE backend that lets your StockLedger IMS app save data
+ * directly into a Google Sheet automatically.
+ *
+ * SETUP INSTRUCTIONS:
+ * 1. Go to https://sheets.google.com and create a new blank spreadsheet
+ * 2. Name it "Brighto IMS Data" (or anything you like)
+ * 3. Click Extensions → Apps Script
+ * 4. Delete any code you see there, and paste THIS ENTIRE FILE in its place
+ * 5. Click the Save icon (floppy disk)
+ * 6. Click "Deploy" (top right) → "New deployment"
+ * 7. Click the gear icon next to "Select type" → choose "Web app"
+ * 8. Set "Execute as" = Me
+ * 9. Set "Who has access" = Anyone
+ * 10. Click "Deploy"
+ * 11. Google will show you a URL like https://script.google.com/macros/s/XXXXX/exec
+ * 12. Copy that URL — paste it into the StockLedger IMS app's Settings page
+ *
+ * That's it. Every change you make in the app will now save to this Google Sheet.
+ */
 
-const SHEETS_URL_KEY = 'ims_sheets_webhook_url';
-const SHEETS_AUTOSAVE_KEY = 'ims_sheets_autosave';
+function doPost(e) {
+  try {
+    const data = JSON.parse(e.postData.contents);
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
 
-export default function Settings() {
-  const store = useStore();
-  const { theme, toggleTheme } = useTheme();
-  const [sheetsUrl, setSheetsUrl] = useState(localStorage.getItem(SHEETS_URL_KEY) || '');
-  const [autosave, setAutosave] = useState(localStorage.getItem(SHEETS_AUTOSAVE_KEY) === 'true');
-  const [syncStatus, setSyncStatus] = useState(null); // null | 'syncing' | 'success' | 'error'
-  const [lastSync, setLastSync] = useState(localStorage.getItem('ims_last_sync') || null);
-  const [confirmClear, setConfirmClear] = useState(false);
-  const [confirmDemo, setConfirmDemo] = useState(false);
-  const [showGuide, setShowGuide] = useState(false);
-  const syncTimeout = useRef(null);
+    // Each data type gets its own sheet tab
+    const sheetNames = [
+      'brands', 'categories', 'suppliers', 'products', 'batches',
+      'shopkeepers', 'invoices', 'ledgerEntries', 'expenses'
+    ];
 
-  // AI provider state
-  const [activeProvider, setActiveProviderState] = useState(getActiveProvider());
-  const [keys, setKeys] = useState(() => {
-    const obj = {};
-    Object.keys(PROVIDERS).forEach(id => { obj[id] = getApiKey(id); });
-    return obj;
-  });
-  const [savedFlash, setSavedFlash] = useState(null);
-
-  // Save Sheets URL + autosave preference whenever they change
-  useEffect(() => {
-    localStorage.setItem(SHEETS_URL_KEY, sheetsUrl);
-  }, [sheetsUrl]);
-
-  useEffect(() => {
-    localStorage.setItem(SHEETS_AUTOSAVE_KEY, String(autosave));
-  }, [autosave]);
-
-  // Auto-sync whenever store data changes, if enabled
-  useEffect(() => {
-    if (!autosave || !sheetsUrl) return;
-    if (syncTimeout.current) clearTimeout(syncTimeout.current);
-    syncTimeout.current = setTimeout(() => {
-      syncToSheets(true);
-    }, 2000); // debounce so rapid edits don't spam requests
-    return () => clearTimeout(syncTimeout.current);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [store.products, store.shopkeepers, store.invoices, store.suppliers, store.expenses, store.ledgerEntries, autosave, sheetsUrl]);
-
-  const syncToSheets = async (silent = false) => {
-    if (!sheetsUrl) {
-      if (!silent) setSyncStatus('error');
-      return;
-    }
-    setSyncStatus('syncing');
-    try {
-      const payload = {
-        brands: store.brands,
-        categories: store.categories,
-        suppliers: store.suppliers,
-        products: store.products,
-        batches: store.batches,
-        shopkeepers: store.shopkeepers,
-        invoices: store.invoices,
-        ledgerEntries: store.ledgerEntries,
-        expenses: store.expenses,
-      };
-      // Apps Script web apps require no-cors from browser fetch in many setups;
-      // we use mode: 'no-cors' so the request isn't blocked, and treat it optimistically.
-      await fetch(sheetsUrl, {
-        method: 'POST',
-        mode: 'no-cors',
-        headers: { 'Content-Type': 'text/plain' },
-        body: JSON.stringify(payload),
-      });
-      const now = new Date().toLocaleString();
-      localStorage.setItem('ims_last_sync', now);
-      setLastSync(now);
-      setSyncStatus('success');
-      setTimeout(() => setSyncStatus(null), 3000);
-    } catch (e) {
-      console.error('Sheets sync failed', e);
-      setSyncStatus('error');
-      setTimeout(() => setSyncStatus(null), 4000);
-    }
-  };
-
-  const handleClearAll = () => {
-    if (confirmClear) {
-      store.clearAll();
-      setConfirmClear(false);
-    } else {
-      setConfirmClear(true);
-      setTimeout(() => setConfirmClear(false), 4000);
-    }
-  };
-
-  const handleRestoreDemo = () => {
-    if (confirmDemo) {
-      store.resetAll();
-      setConfirmDemo(false);
-    } else {
-      setConfirmDemo(true);
-      setTimeout(() => setConfirmDemo(false), 4000);
-    }
-  };
-
-  const handleProviderSelect = (id) => {
-    setActiveProviderState(id);
-    setActiveProvider(id);
-  };
-
-  const handleKeyChange = (id, value) => {
-    setKeys(prev => ({ ...prev, [id]: value }));
-  };
-
-  const handleKeySave = (id) => {
-    setApiKey(id, keys[id]);
-    setSavedFlash(id);
-    setTimeout(() => setSavedFlash(null), 2000);
-  };
-
-  const exportToExcel = () => {
-    const wb = XLSX.utils.book_new();
-
-    const sheets = {
-      Products: store.products,
-      Suppliers: store.suppliers,
-      Batches: store.batches,
-      Shopkeepers: store.shopkeepers,
-      Invoices: store.invoices.map(inv => ({
-        ...inv,
-        items: JSON.stringify(inv.items || []), // flatten nested array for Excel
-      })),
-      Ledger: store.ledgerEntries,
-      Expenses: store.expenses,
-    };
-
-    Object.entries(sheets).forEach(([name, rows]) => {
-      if (rows && rows.length > 0) {
-        const ws = XLSX.utils.json_to_sheet(rows);
-        XLSX.utils.book_append_sheet(wb, ws, name);
+    sheetNames.forEach(name => {
+      if (data[name]) {
+        writeSheet(ss, name, data[name]);
       }
     });
 
-    const dateStr = new Date().toISOString().split('T')[0];
-    XLSX.writeFile(wb, `brighto-ims-export-${dateStr}.xlsx`);
-  };
+    return ContentService
+      .createTextOutput(JSON.stringify({ success: true, timestamp: new Date().toISOString() }))
+      .setMimeType(ContentService.MimeType.JSON);
 
-  return (
-    <div>
-      <PageHeader title="Settings" subtitle="Appearance, data backup, and export options" />
-
-      {/* Appearance */}
-      <Card style={{ marginBottom: 16 }}>
-        <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 14 }}>🎨 Appearance</div>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <div>
-            <div style={{ fontSize: 13, fontWeight: 500 }}>Theme</div>
-            <div style={{ fontSize: 12, color: 'var(--text2)' }}>Currently using {theme === 'dark' ? 'Dark' : 'Light'} mode</div>
-          </div>
-          <div style={{ display: 'flex', background: 'var(--bg3)', borderRadius: 20, padding: 3, border: '0.5px solid var(--border2)' }}>
-            <button onClick={() => theme !== 'dark' && toggleTheme()} style={{
-              padding: '6px 16px', borderRadius: 20, fontSize: 12, fontWeight: 600,
-              background: theme === 'dark' ? 'var(--accent)' : 'transparent',
-              color: theme === 'dark' ? '#fff' : 'var(--text2)', border: 'none', cursor: 'pointer', transition: 'all 0.2s'
-            }}>🌙 Dark</button>
-            <button onClick={() => theme !== 'light' && toggleTheme()} style={{
-              padding: '6px 16px', borderRadius: 20, fontSize: 12, fontWeight: 600,
-              background: theme === 'light' ? 'var(--accent)' : 'transparent',
-              color: theme === 'light' ? '#fff' : 'var(--text2)', border: 'none', cursor: 'pointer', transition: 'all 0.2s'
-            }}>☀️ Light</button>
-          </div>
-        </div>
-      </Card>
-
-      {/* AI Provider Selection */}
-      <Card style={{ marginBottom: 16 }}>
-        <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 4 }}>🧠 AI Provider (for OCR & Voice parsing)</div>
-        <div style={{ fontSize: 12, color: 'var(--text2)', marginBottom: 16 }}>
-          Pick a free AI service for invoice scanning and voice commands. Each needs its own free API key from the provider — your key stays only in this browser, never sent anywhere except directly to that provider.
-        </div>
-
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px,1fr))', gap: 10, marginBottom: 16 }}>
-          {Object.values(PROVIDERS).map(p => (
-            <div key={p.id} onClick={() => handleProviderSelect(p.id)} style={{
-              padding: '12px 14px', borderRadius: 'var(--radius)', cursor: 'pointer',
-              background: activeProvider === p.id ? 'var(--accent-dim)' : 'var(--bg3)',
-              border: activeProvider === p.id ? '1.5px solid var(--accent)' : '0.5px solid var(--border2)',
-              transition: 'all 0.15s'
-            }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-                <span style={{ fontWeight: 600, fontSize: 13 }}>{p.icon} {p.name}</span>
-                {activeProvider === p.id && <Badge color="accent">Active</Badge>}
-              </div>
-              <div style={{ fontSize: 11, color: 'var(--text3)', marginBottom: 2 }}>
-                {p.supportsVision ? '✓ Supports invoice photo scanning' : '✗ Voice commands only (no photo OCR)'}
-              </div>
-              <div style={{ fontSize: 11, color: getApiKey(p.id) ? 'var(--green)' : 'var(--amber)' }}>
-                {getApiKey(p.id) ? '✓ Key configured' : '⚠ No key yet'}
-              </div>
-            </div>
-          ))}
-        </div>
-
-        {/* Key input for currently selected provider */}
-        <div style={{ background: 'var(--bg3)', borderRadius: 'var(--radius)', padding: 14, border: '0.5px solid var(--border2)' }}>
-          <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 4 }}>
-            {PROVIDERS[activeProvider].icon} {PROVIDERS[activeProvider].keyLabel}
-          </div>
-          <div style={{ fontSize: 11, color: 'var(--text2)', marginBottom: 10 }}>
-            {PROVIDERS[activeProvider].keyHelp}
-          </div>
-          <div style={{ display: 'flex', gap: 8 }}>
-            <input
-              type="password"
-              placeholder={PROVIDERS[activeProvider].keyPlaceholder}
-              value={keys[activeProvider]}
-              onChange={e => handleKeyChange(activeProvider, e.target.value)}
-              style={{ flex: 1, padding: '8px 12px', background: 'var(--bg)', border: '0.5px solid var(--border2)', borderRadius: 'var(--radius)', color: 'var(--text)', outline: 'none', fontSize: 13 }}
-            />
-            <Btn onClick={() => handleKeySave(activeProvider)}>
-              {savedFlash === activeProvider ? '✓ Saved' : 'Save key'}
-            </Btn>
-          </div>
-        </div>
-
-        <div style={{ marginTop: 12, fontSize: 11, color: 'var(--text3)', lineHeight: 1.6 }}>
-          💡 <strong>Tip:</strong> Only Gemini supports scanning invoice photos (OCR). Grok, DeepSeek, and OpenChat work great for voice commands (turning spoken sentences into structured data) but can't read images.
-        </div>
-      </Card>
-
-      {/* Google Sheets Sync */}
-      <Card style={{ marginBottom: 16 }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 14 }}>
-          <div>
-            <div style={{ fontWeight: 600, fontSize: 14 }}>📊 Google Sheets Backup</div>
-            <div style={{ fontSize: 12, color: 'var(--text2)', marginTop: 2 }}>Automatically save your data to a Google Sheet you own</div>
-          </div>
-          {syncStatus === 'syncing' && <Badge color="amber">Syncing...</Badge>}
-          {syncStatus === 'success' && <Badge color="green">✓ Synced</Badge>}
-          {syncStatus === 'error' && <Badge color="red">Sync failed</Badge>}
-        </div>
-
-        <Input
-          label="Google Apps Script Web App URL"
-          placeholder="https://script.google.com/macros/s/XXXXX/exec"
-          value={sheetsUrl}
-          onChange={e => setSheetsUrl(e.target.value)}
-        />
-
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <input type="checkbox" id="autosave" checked={autosave} onChange={e => setAutosave(e.target.checked)} style={{ width: 16, height: 16, cursor: 'pointer' }} />
-            <label htmlFor="autosave" style={{ fontSize: 13, cursor: 'pointer' }}>Auto-save on every change</label>
-          </div>
-          {lastSync && <span style={{ fontSize: 11, color: 'var(--text3)' }}>Last synced: {lastSync}</span>}
-        </div>
-
-        <div style={{ display: 'flex', gap: 8 }}>
-          <Btn onClick={() => syncToSheets(false)} disabled={!sheetsUrl}>📤 Sync now</Btn>
-          <Btn variant="ghost" onClick={() => setShowGuide(true)}>📖 How to set this up</Btn>
-        </div>
-
-        {!sheetsUrl && (
-          <div style={{ marginTop: 12, padding: '10px 14px', background: 'var(--amber-dim)', borderRadius: 'var(--radius)', fontSize: 12, color: 'var(--amber)' }}>
-            ⚠ Not connected yet — click "How to set this up" below for a free 5-minute setup using your own Google account.
-          </div>
-        )}
-      </Card>
-
-      {/* Excel Export */}
-      <Card style={{ marginBottom: 16 }}>
-        <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 4 }}>📥 Export to Excel</div>
-        <div style={{ fontSize: 12, color: 'var(--text2)', marginBottom: 14 }}>Download all your data as an .xlsx file you can open in Excel or Google Sheets</div>
-        <Btn onClick={exportToExcel}>⬇ Download Excel file</Btn>
-      </Card>
-
-      {/* Data Management */}
-      <Card>
-        <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 4 }}>🗑 Data Management</div>
-        <div style={{ fontSize: 12, color: 'var(--text2)', marginBottom: 16 }}>Be careful — these actions affect all your saved data</div>
-
-        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-          <Btn variant="danger" onClick={handleClearAll}>
-            {confirmClear ? '⚠ Click again to confirm — deletes everything' : '🗑 Clear all data (start fresh)'}
-          </Btn>
-          <Btn variant="ghost" onClick={handleRestoreDemo}>
-            {confirmDemo ? '⚠ Click again — replaces with demo data' : '↺ Restore demo/sample data'}
-          </Btn>
-        </div>
-        <div style={{ marginTop: 12, fontSize: 11, color: 'var(--text3)', lineHeight: 1.6 }}>
-          <strong>Clear all data</strong> removes every product, invoice, shopkeeper, and transaction — keeping only your brand and category names. Use this once you're ready to start entering real business data.<br/>
-          <strong>Restore demo data</strong> brings back the original sample data for exploring features.
-        </div>
-      </Card>
-
-      {showGuide && <SheetsGuide onClose={() => setShowGuide(false)} />}
-    </div>
-  );
+  } catch (err) {
+    return ContentService
+      .createTextOutput(JSON.stringify({ success: false, error: err.toString() }))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
 }
 
-function SheetsGuide({ onClose }) {
-  return (
-    <Modal title="📊 Connect Google Sheets (Free, 5 minutes)" onClose={onClose} width={620}>
-      <ol style={{ paddingLeft: 20, display: 'flex', flexDirection: 'column', gap: 14, fontSize: 13, lineHeight: 1.6 }}>
-        <li>Go to <strong>sheets.google.com</strong> and create a new blank spreadsheet. Name it anything, like "Brighto IMS Data".</li>
-        <li>Click <strong>Extensions → Apps Script</strong> in the menu bar.</li>
-        <li>Delete any code shown, then paste in the script from the <code style={{ background: 'var(--bg3)', padding: '1px 6px', borderRadius: 4 }}>GOOGLE_APPS_SCRIPT.gs</code> file that came with your app download.</li>
-        <li>Click the <strong>Save</strong> icon (floppy disk).</li>
-        <li>Click <strong>Deploy</strong> (top right) → <strong>New deployment</strong>.</li>
-        <li>Click the gear icon ⚙ next to "Select type" → choose <strong>Web app</strong>.</li>
-        <li>Set <strong>Execute as</strong> = Me, and <strong>Who has access</strong> = Anyone.</li>
-        <li>Click <strong>Deploy</strong>. Google may ask you to authorize — click through and allow it (it's your own script, on your own account).</li>
-        <li>Copy the URL shown (looks like <code style={{ background: 'var(--bg3)', padding: '1px 6px', borderRadius: 4, fontSize: 11 }}>https://script.google.com/macros/s/.../exec</code>).</li>
-        <li>Paste that URL into the "Google Apps Script Web App URL" field on this Settings page, then click <strong>Sync now</strong>.</li>
-      </ol>
-      <div style={{ marginTop: 16, padding: '10px 14px', background: 'var(--accent-dim)', borderRadius: 'var(--radius)', fontSize: 12, color: 'var(--accent)' }}>
-        💡 This is completely free — it uses your own Google account's free Apps Script quota, with no credit card or sign-up needed beyond your existing Google account.
-      </div>
-      <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 16 }}>
-        <Btn onClick={onClose}>Got it</Btn>
-      </div>
-    </Modal>
-  );
+function doGet(e) {
+  try {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const result = {};
+    const sheetNames = [
+      'brands', 'categories', 'suppliers', 'products', 'batches',
+      'shopkeepers', 'invoices', 'ledgerEntries', 'expenses'
+    ];
+
+    sheetNames.forEach(name => {
+      const sheet = ss.getSheetByName(name);
+      if (sheet) {
+        result[name] = readSheet(sheet);
+      }
+    });
+
+    return ContentService
+      .createTextOutput(JSON.stringify({ success: true, data: result }))
+      .setMimeType(ContentService.MimeType.JSON);
+
+  } catch (err) {
+    return ContentService
+      .createTextOutput(JSON.stringify({ success: false, error: err.toString() }))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
+}
+
+function writeSheet(ss, name, rows) {
+  let sheet = ss.getSheetByName(name);
+  if (!sheet) {
+    sheet = ss.insertSheet(name);
+  }
+  sheet.clear();
+
+  if (!rows || rows.length === 0) return;
+
+  // Header row from object keys
+  const headers = Object.keys(rows[0]);
+  sheet.appendRow(headers);
+
+  // Data rows
+  rows.forEach(row => {
+    const line = headers.map(h => {
+      const val = row[h];
+      if (Array.isArray(val) || (typeof val === 'object' && val !== null)) {
+        return JSON.stringify(val);
+      }
+      return val;
+    });
+    sheet.appendRow(line);
+  });
+
+  // Auto-resize columns for readability
+  sheet.autoResizeColumns(1, headers.length);
+}
+
+function readSheet(sheet) {
+  const values = sheet.getDataRange().getValues();
+  if (values.length < 2) return [];
+
+  const headers = values[0];
+  const rows = values.slice(1);
+
+  return rows.map(row => {
+    const obj = {};
+    headers.forEach((h, i) => {
+      let val = row[i];
+      // Try to parse JSON-looking strings back into objects/arrays
+      if (typeof val === 'string' && (val.startsWith('[') || val.startsWith('{'))) {
+        try { val = JSON.parse(val); } catch (e) { /* leave as string */ }
+      }
+      obj[h] = val;
+    });
+    return obj;
+  });
 }

@@ -12,6 +12,7 @@ const navItems = [
   { path: '/invoices', label: 'Invoices', icon: '🧾' },
   { path: '/ledger', label: 'Ledger', icon: '📒' },
   { path: '/expenses', label: 'Expenses', icon: '💸' },
+  { path: '/import', label: 'Import Data', icon: '📥' },
   { path: '/settings', label: 'Settings', icon: '⚙️' },
 ];
 

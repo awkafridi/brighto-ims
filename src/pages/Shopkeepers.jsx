@@ -11,6 +11,7 @@ export default function Shopkeepers() {
   const [showAdd, setShowAdd] = useState(false);
   const [editing, setEditing] = useState(null);
   const [showPayment, setShowPayment] = useState(false);
+  const [pendingWhatsApp, setPendingWhatsApp] = useState(null);
   const [search, setSearch] = useState('');
   const [audioLang, setAudioLang] = useState('en');
   const [confirmDelete, setConfirmDelete] = useState(null);
@@ -50,15 +51,13 @@ export default function Shopkeepers() {
     setSelected(prev => ({ ...prev, balance: newBalance }));
     setShowPayment(false);
 
-    // Offer WhatsApp payment confirmation right after recording
-    const brand = brands.find(b => b.id === selected.brandId) || brands[0];
+    // Build WhatsApp message and show in-app confirm instead of blocked window.confirm
+    const brand = brands[0];
     const message = buildPaymentReceivedMessage({
       shopName: selected.shopName, brandName: brand?.name,
       amountReceived: amount, previousBalance, newBalance, date: paymentForm.date,
     });
-    if (window.confirm(`Payment recorded! Send WhatsApp confirmation to ${selected.shopName}?`)) {
-      openWhatsApp(selected.phone, message);
-    }
+    setPendingWhatsApp({ phone: selected.phone, message, shopName: selected.shopName });
     setPaymentForm({ amount: '', date: new Date().toISOString().split('T')[0], method: 'Cash' });
   };
 
@@ -182,6 +181,24 @@ export default function Shopkeepers() {
           <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 8 }}>
             <Btn variant="ghost" onClick={() => { setShowAdd(false); setEditing(null); }}>Cancel</Btn>
             <Btn onClick={handleSave}>{editing ? 'Save changes' : 'Add shopkeeper'}</Btn>
+          </div>
+        </Modal>
+      )}
+
+      {/* In-app WhatsApp confirm dialog */}
+      {pendingWhatsApp && (
+        <Modal title="💬 Send WhatsApp message?" onClose={() => setPendingWhatsApp(null)} width={500}>
+          <div style={{ fontSize: 13, color: 'var(--text2)', marginBottom: 12 }}>
+            Send a WhatsApp message to <strong style={{ color: 'var(--text)' }}>{pendingWhatsApp.shopName}</strong>?
+          </div>
+          <div style={{ background: 'var(--bg3)', borderRadius: 'var(--radius)', padding: '10px 14px', marginBottom: 16, fontSize: 12, color: 'var(--text2)', whiteSpace: 'pre-wrap', lineHeight: 1.7, maxHeight: 220, overflowY: 'auto' }}>
+            {pendingWhatsApp.message}
+          </div>
+          <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+            <Btn variant="ghost" onClick={() => setPendingWhatsApp(null)}>Skip</Btn>
+            <Btn onClick={() => { openWhatsApp(pendingWhatsApp.phone, pendingWhatsApp.message); setPendingWhatsApp(null); }}>
+              💬 Open WhatsApp
+            </Btn>
           </div>
         </Modal>
       )}
