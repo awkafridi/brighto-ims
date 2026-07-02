@@ -1,3 +1,2 @@
-{
-  "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }]
-}
+# Copy to .env.local and set your backend URL
+VITE_API_URL=http://localhost:8000
