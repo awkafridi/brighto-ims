@@ -109,15 +109,19 @@ export function StoreProvider({ children }) {
   const addBatch = (data) => {
     const batch = { id: uid('bt'), qtyRemaining: data.qtyReceived, ...data };
     setState(prev => {
-      const relevantBatches = [...prev.batches.filter(b => b.productId === data.productId && b.qtyRemaining > 0), batch];
-      const totalQty = relevantBatches.reduce((s, b) => s + b.qtyRemaining, 0);
-      const totalVal = relevantBatches.reduce((s, b) => s + b.unitCost * b.qtyRemaining, 0);
+      const existingBatches = prev.batches.filter(b => b.productId === data.productId && b.qtyRemaining > 0);
+      const allBatches = [...existingBatches, batch];
+      const totalQty = allBatches.reduce((s, b) => s + b.qtyRemaining, 0);
+      const totalVal = allBatches.reduce((s, b) => s + (b.unitCost || 0) * b.qtyRemaining, 0);
       const avgCost = totalQty ? Math.round(totalVal / totalQty) : data.unitCost;
+      // Stock is ADDITIVE — add the new batch qty on top of whatever is already there
+      const currentProduct = prev.products.find(p => p.id === data.productId);
+      const newStock = (currentProduct?.stock || 0) + data.qtyReceived;
       return {
         ...prev,
         batches: [...prev.batches, batch],
         products: prev.products.map(p => p.id === data.productId
-          ? { ...p, avgCost, stock: (p.stock || 0) + data.qtyReceived }
+          ? { ...p, avgCost, stock: newStock }
           : p
         )
       };
