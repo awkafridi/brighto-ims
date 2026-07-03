@@ -12,9 +12,20 @@ export function openWhatsApp(phone, message) {
     return;
   }
   const encoded = encodeURIComponent(message);
-  // Use location.href instead of window.open — works on GitHub Pages and mobile browsers
-  // where popups are blocked. Opens WhatsApp in the same tab; user presses Back to return.
-  window.location.href = `https://wa.me/${cleanPhone}?text=${encoded}`;
+  const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+
+  if (isMobile) {
+    // On mobile — open WhatsApp app directly
+    window.location.href = `whatsapp://send?phone=${cleanPhone}&text=${encoded}`;
+  } else {
+    // On desktop — open WhatsApp Web in a new tab without closing current page
+    const url = `https://web.whatsapp.com/send?phone=${cleanPhone}&text=${encoded}`;
+    const opened = window.open(url, '_blank', 'noopener,noreferrer');
+    if (!opened) {
+      // Popup blocked — fall back to same-tab navigation
+      window.location.href = url;
+    }
+  }
 }
 
 // Sent right after a new invoice/sale is created

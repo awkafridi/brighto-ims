@@ -6,7 +6,7 @@ import { openWhatsApp, buildPurchaseMessage } from '../utils/whatsapp';
 
 const statusColor = { paid: 'green', partial: 'amber', unpaid: 'red' };
 
-// Native <select> used directly here (not the UI wrapper) to avoid style conflicts
+// Native <select> used directly here to avoid style conflicts
 function LineSelect({ value, onChange, children }) {
   return (
     <select value={value} onChange={onChange} style={{
@@ -19,7 +19,26 @@ function LineSelect({ value, onChange, children }) {
   );
 }
 
-function NativeSelect({ label, value, onChange, children, style = {} }) {
+// Build all selectable items from products + their variants
+// Each item has: id, label, sellingPrice, stock, parentProductId (null if it's the parent itself)
+function buildLineItems(products, categories, activeBrand, categoryFilter) {
+  const filtered = products.filter(p =>
+    (activeBrand === 'all' || p.brandId === activeBrand) &&
+    (categoryFilter === 'all' || p.categoryId === categoryFilter)
+  );
+
+  // Group by category for optgroups
+  const byCat = {};
+  filtered.forEach(p => {
+    const catId = p.categoryId || '__none__';
+    if (!byCat[catId]) byCat[catId] = [];
+    byCat[catId].push(p);
+  });
+
+  return { byCat, filtered };
+}
+
+function NativeSelectInline({ label, value, onChange, children, style = {} }) {
   return (
     <div style={{ marginBottom: 14, ...style }}>
       {label && <div style={{ fontSize: 12, color: 'var(--text2)', marginBottom: 5, fontWeight: 500 }}>{label}</div>}
@@ -58,10 +77,7 @@ export default function Invoices({ activeBrand }) {
   });
 
   // Products filtered by brand + category
-  const availableProducts = products.filter(p =>
-    (activeBrand === 'all' || p.brandId === activeBrand) &&
-    (categoryFilter === 'all' || p.categoryId === categoryFilter)
-  );
+  const { byCat, filtered: availableProducts } = buildLineItems(products, categories, activeBrand, categoryFilter);
 
   // Shopkeeper purchase history — shown live in the form
   const shopkeeperHistory = useMemo(() => {
@@ -88,9 +104,28 @@ export default function Invoices({ activeBrand }) {
     setLines(prev => {
       const updated = prev.map((l, idx) => idx === i ? { ...l, [field]: val } : l);
       if (field === 'productId') {
-        const p = products.find(p => p.id === val);
-        // Use the product's defined selling price — fall back to cost + 35% only if none set
-        if (p) updated[i].unitPrice = p.sellingPrice || Math.round((p.avgCost || 0) * 1.35);
+        // Check if it's a variant id (starts with 'v') or main product
+        let price = 0;
+        let parentProductId = val;
+
+        // Search all products and their variants
+        for (const p of products) {
+          if (p.id === val) {
+            // It's a main product
+            price = p.sellingPrice || Math.round((p.avgCost || 0) * 1.35);
+            parentProductId = p.id;
+            break;
+          }
+          const variant = (p.variants || []).find(v => v.id === val);
+          if (variant) {
+            // It's a variant — use variant price, fall back to parent price
+            price = variant.sellingPrice || p.sellingPrice || Math.round((p.avgCost || 0) * 1.35);
+            parentProductId = p.id;
+            break;
+          }
+        }
+        updated[i].unitPrice = price;
+        updated[i].parentProductId = parentProductId;
       }
       return updated;
     });
@@ -111,13 +146,22 @@ export default function Invoices({ activeBrand }) {
 
     addInvoice({ ...invForm, items: validLines });
 
-    // Prepare WhatsApp message — show in-app dialog instead of window.confirm
+    // Prepare WhatsApp — resolve product/variant name for each line
     const sk = shopkeepers.find(s => s.id === invForm.shopkeeperId);
     const brand = brands.find(b => b.id === invForm.brandId);
     if (sk) {
       const previousBalance = sk.balance;
       const newBalance = previousBalance + lineTotal;
-      const productNames = validLines.map(l => products.find(p => p.id === l.productId)?.name || 'Item');
+      const productNames = validLines.map(l => {
+        // Could be a main product or a variant id
+        const mainProduct = products.find(p => p.id === l.productId);
+        if (mainProduct) return mainProduct.name;
+        for (const p of products) {
+          const v = (p.variants || []).find(v => v.id === l.productId);
+          if (v) return `${p.name} – ${v.name}`;
+        }
+        return 'Item';
+      });
       const message = buildPurchaseMessage({
         shopName: sk.shopName, brandName: brand?.name,
         items: validLines, productNames, total: lineTotal,
@@ -197,9 +241,17 @@ export default function Invoices({ activeBrand }) {
             </div>
           </div>
           <Table columns={[
-            { key: 'product', label: 'Product', render: (_, row) => products.find(p => p.id === row.productId)?.name || row.productId },
+            { key: 'product', label: 'Product', render: (_, row) => {
+              const mainProduct = products.find(p => p.id === row.productId);
+              if (mainProduct) return mainProduct.name;
+              for (const p of products) {
+                const v = (p.variants || []).find(v => v.id === row.productId);
+                if (v) return <div><div style={{ fontWeight: 500 }}>{p.name}</div><div style={{ fontSize: 11, color: 'var(--text3)' }}>↳ {v.name}</div></div>;
+              }
+              return row.productId;
+            }},
             { key: 'cat', label: 'Category', render: (_, row) => {
-              const p = products.find(p => p.id === row.productId);
+              const p = products.find(p => p.id === row.productId || (p.variants || []).some(v => v.id === row.productId));
               const c = categories.find(c => c.id === p?.categoryId);
               return c ? <span style={{ fontSize: 12 }}>{c.icon} {c.name}</span> : '—';
             }},
@@ -231,13 +283,13 @@ export default function Invoices({ activeBrand }) {
         <Modal title="New invoice" onClose={() => { setShowNew(false); resetForm(); }} width={720}>
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-            <NativeSelect label="Customer" value={invForm.shopkeeperId} onChange={e => setInvForm(f => ({ ...f, shopkeeperId: e.target.value }))}>
+            <NativeSelectInline label="Customer" value={invForm.shopkeeperId} onChange={e => setInvForm(f => ({ ...f, shopkeeperId: e.target.value }))}>
               <option value="">Select shopkeeper...</option>
               {shopkeepers.map(s => <option key={s.id} value={s.id}>{s.shopName}</option>)}
-            </NativeSelect>
-            <NativeSelect label="Brand" value={invForm.brandId} onChange={e => setInvForm(f => ({ ...f, brandId: e.target.value }))}>
+            </NativeSelectInline>
+            <NativeSelectInline label="Brand" value={invForm.brandId} onChange={e => setInvForm(f => ({ ...f, brandId: e.target.value }))}>
               {brands.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
-            </NativeSelect>
+            </NativeSelectInline>
           </div>
 
           {/* Shopkeeper history reminder */}
@@ -264,10 +316,10 @@ export default function Invoices({ activeBrand }) {
           )}
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-            <NativeSelect label="Filter products by category" value={categoryFilter} onChange={e => setCategoryFilter(e.target.value)}>
+            <NativeSelectInline label="Filter products by category" value={categoryFilter} onChange={e => setCategoryFilter(e.target.value)}>
               <option value="all">All categories</option>
               {categories.map(c => <option key={c.id} value={c.id}>{c.icon} {c.name}</option>)}
-            </NativeSelect>
+            </NativeSelectInline>
             <div style={{ marginBottom: 14 }}>
               <div style={{ fontSize: 12, color: 'var(--text2)', marginBottom: 5, fontWeight: 500 }}>Invoice date</div>
               <input type="date" value={invForm.date} onChange={e => setInvForm(f => ({ ...f, date: e.target.value }))} style={{
@@ -290,26 +342,46 @@ export default function Invoices({ activeBrand }) {
           {/* Line item rows */}
           {lines.map((line, i) => (
             <div key={i} style={{ display: 'grid', gridTemplateColumns: '2fr 70px 110px 100px 36px', gap: 8, marginBottom: 8, alignItems: 'center' }}>
-              {/* Product dropdown — always shows all available products */}
+              {/* Product dropdown — grouped by category, with variants as sub-options */}
               <LineSelect value={line.productId} onChange={e => updateLine(i, 'productId', e.target.value)}>
                 <option value="">— select product —</option>
-                {availableProducts.length === 0 && <option disabled>No products found — add in Inventory first</option>}
+                {availableProducts.length === 0 && <option disabled>No products — add in Inventory first</option>}
                 {categories.map(cat => {
                   const catProds = availableProducts.filter(p => p.categoryId === cat.id);
                   if (!catProds.length) return null;
                   return (
                     <optgroup key={cat.id} label={`${cat.icon} ${cat.name}`}>
-                      {catProds.map(p => (
-                        <option key={p.id} value={p.id}>
-                          {p.name} — sell: ₨{p.sellingPrice || 0} | cost: ₨{p.avgCost || 0} | stock: {p.stock || 0} {p.unit}
-                        </option>
-                      ))}
+                      {catProds.map(p => {
+                        const hasVariants = (p.variants || []).length > 0;
+                        return (
+                          <optgroup key={p.id} label={`  📦 ${p.name} — ₨${p.sellingPrice || 0} | stock: ${p.stock || 0}`}>
+                            {/* Main product as first selectable option */}
+                            <option value={p.id}>
+                              ↳ {p.name} (all) — sell: ₨{p.sellingPrice || 0} | stock: {p.stock || 0}
+                            </option>
+                            {/* Variants as sub-options */}
+                            {(p.variants || []).map(v => (
+                              <option key={v.id} value={v.id}>
+                                ↳ {v.name} — sell: ₨{v.sellingPrice || p.sellingPrice || 0} | stock: {v.stock || 0}
+                              </option>
+                            ))}
+                            {!hasVariants && null}
+                          </optgroup>
+                        );
+                      })}
                     </optgroup>
                   );
                 })}
                 {/* Products with no category */}
                 {availableProducts.filter(p => !p.categoryId || !categories.find(c => c.id === p.categoryId)).map(p => (
-                  <option key={p.id} value={p.id}>{p.name} — sell: ₨{p.sellingPrice || 0} | stock: {p.stock || 0}</option>
+                  <optgroup key={p.id} label={`📦 ${p.name} — ₨${p.sellingPrice || 0}`}>
+                    <option value={p.id}>↳ {p.name} (all) — sell: ₨{p.sellingPrice || 0} | stock: {p.stock || 0}</option>
+                    {(p.variants || []).map(v => (
+                      <option key={v.id} value={v.id}>
+                        ↳ {v.name} — sell: ₨{v.sellingPrice || p.sellingPrice || 0} | stock: {v.stock || 0}
+                      </option>
+                    ))}
+                  </optgroup>
                 ))}
               </LineSelect>
 

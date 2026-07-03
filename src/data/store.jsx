@@ -101,9 +101,26 @@ export function StoreProvider({ children }) {
   const deleteSupplier = (id) => update('suppliers', ss => ss.filter(s => s.id !== id));
 
   // ── PRODUCTS ──────────────────────────────────────────────────────────────────
-  const addProduct = (data) => update('products', ps => [...ps, { id: uid('p'), avgCost: 0, sellingPrice: 0, stock: 0, ...data }]);
+  const addProduct = (data) => update('products', ps => [...ps, { id: uid('p'), avgCost: 0, sellingPrice: 0, stock: 0, variants: [], ...data }]);
   const editProduct = (id, data) => update('products', ps => ps.map(p => p.id === id ? { ...p, ...data } : p));
   const deleteProduct = (id) => update('products', ps => ps.filter(p => p.id !== id));
+
+  // ── VARIANTS ──────────────────────────────────────────────────────────────────
+  const addVariant = (productId, variantData) => update('products', ps => ps.map(p =>
+    p.id === productId
+      ? { ...p, variants: [...(p.variants || []), { id: uid('v'), ...variantData }] }
+      : p
+  ));
+  const editVariant = (productId, variantId, data) => update('products', ps => ps.map(p =>
+    p.id === productId
+      ? { ...p, variants: (p.variants || []).map(v => v.id === variantId ? { ...v, ...data } : v) }
+      : p
+  ));
+  const deleteVariant = (productId, variantId) => update('products', ps => ps.map(p =>
+    p.id === productId
+      ? { ...p, variants: (p.variants || []).filter(v => v.id !== variantId) }
+      : p
+  ));
 
   // ── BATCHES ───────────────────────────────────────────────────────────────────
   const addBatch = (data) => {
@@ -189,6 +206,7 @@ export function StoreProvider({ children }) {
     addCategory, editCategory, deleteCategory,
     addSupplier, editSupplier, deleteSupplier,
     addProduct, editProduct, deleteProduct,
+    addVariant, editVariant, deleteVariant,
     addBatch,
     addShopkeeper, editShopkeeper, deleteShopkeeper,
     addInvoice, editInvoice,

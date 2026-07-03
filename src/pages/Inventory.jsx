@@ -2,6 +2,116 @@ import { useState } from 'react';
 import { useStore } from '../data/store';
 import { Badge, Card, Table, Modal, Input, Select, Btn, PageHeader } from '../components/UI';
 
+// ── Variants modal — add/edit/delete product sub-products ─────────────────────
+function VariantsModal({ product, onClose }) {
+  const { addVariant, editVariant, deleteVariant } = useStore();
+  const variants = product.variants || [];
+  const [editingId, setEditingId] = useState(null);
+  const [form, setForm] = useState({ name: '', sku: '', sellingPrice: '', stock: '' });
+  const [confirmDel, setConfirmDel] = useState(null);
+
+  const emptyForm = { name: '', sku: '', sellingPrice: '', stock: '' };
+
+  const openNew = () => { setEditingId('new'); setForm(emptyForm); };
+  const openEdit = (v) => {
+    setEditingId(v.id);
+    setForm({ name: v.name, sku: v.sku || '', sellingPrice: v.sellingPrice ?? '', stock: v.stock ?? '' });
+  };
+
+  const handleSave = () => {
+    if (!form.name.trim()) return;
+    const data = {
+      name: form.name,
+      sku: form.sku,
+      sellingPrice: form.sellingPrice !== '' ? Number(form.sellingPrice) : product.sellingPrice || 0,
+      stock: form.stock !== '' ? Number(form.stock) : 0,
+    };
+    if (editingId === 'new') addVariant(product.id, data);
+    else editVariant(product.id, editingId, data);
+    setEditingId(null);
+    setForm(emptyForm);
+  };
+
+  const handleDelete = (id) => {
+    if (confirmDel === id) { deleteVariant(product.id, id); setConfirmDel(null); }
+    else { setConfirmDel(id); setTimeout(() => setConfirmDel(null), 3000); }
+  };
+
+  return (
+    <Modal title={`📋 Variants / Sub-products — ${product.name}`} onClose={onClose} width={680}>
+      <div style={{ fontSize: 12, color: 'var(--text2)', marginBottom: 14 }}>
+        Add variants like different base types (E27/B22), colours (Warm/Cool White), or sizes. Each variant inherits the parent product's cost price but can have its own selling price and stock.
+      </div>
+
+      {/* Variant list */}
+      {variants.length > 0 && (
+        <div style={{ marginBottom: 16 }}>
+          <Table
+            columns={[
+              { key: 'name', label: 'Variant name', render: (v, row) => (
+                <div>
+                  <div style={{ fontWeight: 500 }}>{v}</div>
+                  {row.sku && <div style={{ fontSize: 11, color: 'var(--text3)' }}>{row.sku}</div>}
+                </div>
+              )},
+              { key: 'sellingPrice', label: 'Selling price', align: 'right', render: v => (
+                <span style={{ fontWeight: 700, color: 'var(--green)' }}>₨{v || 0}</span>
+              )},
+              { key: 'stock', label: 'Stock', align: 'right', render: v => (
+                <Badge color={(v || 0) < 50 ? 'red' : (v || 0) < 200 ? 'amber' : 'green'}>{v || 0} pcs</Badge>
+              )},
+              { key: 'actions', label: '', align: 'right', render: (_, row) => (
+                <div style={{ display: 'flex', gap: 5 }}>
+                  <button onClick={() => openEdit(row)} style={{ fontSize: 11, padding: '3px 8px', borderRadius: 6, background: 'var(--accent-dim)', color: 'var(--accent)', border: 'none', cursor: 'pointer' }}>Edit</button>
+                  <button onClick={() => handleDelete(row.id)} style={{ fontSize: 11, padding: '3px 8px', borderRadius: 6, background: 'var(--red-dim)', color: 'var(--red)', border: 'none', cursor: 'pointer' }}>
+                    {confirmDel === row.id ? 'Sure?' : 'Del'}
+                  </button>
+                </div>
+              )},
+            ]}
+            data={variants}
+          />
+        </div>
+      )}
+
+      {variants.length === 0 && !editingId && (
+        <div style={{ textAlign: 'center', padding: '20px', color: 'var(--text3)', marginBottom: 14, background: 'var(--bg3)', borderRadius: 'var(--radius)' }}>
+          No variants yet. Click "+ Add variant" to add sub-products like different colours or base types.
+        </div>
+      )}
+
+      {/* Add / Edit form */}
+      {editingId ? (
+        <div style={{ background: 'var(--bg3)', borderRadius: 'var(--radius)', padding: 14, border: '0.5px solid var(--border2)' }}>
+          <div style={{ fontWeight: 600, marginBottom: 12, fontSize: 13 }}>
+            {editingId === 'new' ? '+ Add new variant' : 'Edit variant'}
+          </div>
+          <Input
+            label="Variant name *"
+            value={form.name}
+            onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
+            placeholder="e.g. E27 – Warm White 3000K"
+          />
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10 }}>
+            <Input label="SKU (optional)" value={form.sku} onChange={e => setForm(f => ({ ...f, sku: e.target.value }))} placeholder="e.g. BRT-12W-WW" />
+            <Input label="Selling price (₨)" type="number" min="0" value={form.sellingPrice} onChange={e => setForm(f => ({ ...f, sellingPrice: e.target.value }))} placeholder={`Default: ${product.sellingPrice || 0}`} />
+            <Input label="Stock qty" type="number" min="0" value={form.stock} onChange={e => setForm(f => ({ ...f, stock: e.target.value }))} placeholder="0" />
+          </div>
+          <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+            <Btn variant="ghost" onClick={() => { setEditingId(null); setForm(emptyForm); }}>Cancel</Btn>
+            <Btn onClick={handleSave}>{editingId === 'new' ? 'Add variant' : 'Save changes'}</Btn>
+          </div>
+        </div>
+      ) : (
+        <div style={{ display: 'flex', gap: 8 }}>
+          <Btn onClick={openNew}>+ Add variant</Btn>
+          <Btn variant="ghost" onClick={onClose}>Close</Btn>
+        </div>
+      )}
+    </Modal>
+  );
+}
+
 // ── SKD / Bill of Materials cost breakdown ────────────────────────────────────
 const DEFAULT_SKD_COMPONENTS = [
   { id: 'body',      label: 'Body / Housing',        amount: 0 },
@@ -127,6 +237,7 @@ export default function Inventory({ activeBrand }) {
   const [showAdd, setShowAdd] = useState(false);
   const [showBatch, setShowBatch] = useState(null);
   const [showSKD, setShowSKD] = useState(null);
+  const [showVariants, setShowVariants] = useState(null);
   const [editing, setEditing] = useState(null);
   const [search, setSearch] = useState('');
   const [catFilter, setCatFilter] = useState('all');
@@ -282,8 +393,12 @@ export default function Inventory({ activeBrand }) {
     }},
     { key: 'batches', label: '', align: 'right', render: (_, row) => {
       const count = batches.filter(b => b.productId === row.id).length;
+      const varCount = (row.variants || []).length;
       return (
-        <div style={{ display: 'flex', gap: 4 }}>
+        <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+          <button onClick={e => { e.stopPropagation(); setShowVariants(row); }} style={{ fontSize: 11, color: 'var(--green)', background: 'var(--green-dim)', padding: '3px 7px', borderRadius: 20, border: 'none', cursor: 'pointer' }}>
+            📋 {varCount} variant{varCount !== 1 ? 's' : ''}
+          </button>
           <button onClick={e => { e.stopPropagation(); setShowBatch(row); }} style={{ fontSize: 11, color: 'var(--accent)', background: 'var(--accent-dim)', padding: '3px 7px', borderRadius: 20, border: 'none', cursor: 'pointer' }}>
             {count} batch{count !== 1 ? 'es' : ''}
           </button>
@@ -536,6 +651,14 @@ export default function Inventory({ activeBrand }) {
           product={showSKD}
           onClose={() => setShowSKD(null)}
           onSave={(data) => handleSKDSave(showSKD.id, data)}
+        />
+      )}
+
+      {/* ── Variants modal ── */}
+      {showVariants && (
+        <VariantsModal
+          product={showVariants}
+          onClose={() => setShowVariants(null)}
         />
       )}
     </div>
