@@ -16,7 +16,7 @@ export default function Shopkeepers() {
   const [audioLang, setAudioLang] = useState('en');
   const [confirmDelete, setConfirmDelete] = useState(null);
   const [paymentForm, setPaymentForm] = useState({ amount: '', date: new Date().toISOString().split('T')[0], method: 'Cash' });
-  const [form, setForm] = useState({ shopName: '', owner: '', address: '', phone: '' });
+  const [form, setForm] = useState({ shopName: '', owner: '', address: '', phone: '+92-' });
 
   const filtered = shopkeepers.filter(s =>
     s.shopName.toLowerCase().includes(search.toLowerCase()) ||
@@ -27,7 +27,7 @@ export default function Shopkeepers() {
   const selectedLedger = selected ? ledgerEntries.filter(e => e.shopkeeperId === selected.id) : [];
   const selectedInvoices = selected ? invoices.filter(i => i.shopkeeperId === selected.id).sort((a, b) => new Date(b.date) - new Date(a.date)) : [];
 
-  const openAdd = () => { setForm({ shopName: '', owner: '', address: '', phone: '' }); setEditing(null); setShowAdd(true); };
+  const openAdd = () => { setForm({ shopName: '', owner: '', address: '', phone: '+92-' }); setEditing(null); setShowAdd(true); };
   const openEdit = (sk) => { setForm({ shopName: sk.shopName, owner: sk.owner, address: sk.address, phone: sk.phone }); setEditing(sk); setShowAdd(true); };
 
   const handleSave = () => {

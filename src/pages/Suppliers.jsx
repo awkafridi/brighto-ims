@@ -8,9 +8,9 @@ export default function Suppliers() {
   const [showAdd, setShowAdd] = useState(false);
   const [editing, setEditing] = useState(null);
   const [confirmDelete, setConfirmDelete] = useState(null);
-  const [form, setForm] = useState({ name: '', country: 'Pakistan', contact: '', phone: '', email: '' });
+  const [form, setForm] = useState({ name: '', country: 'China', contact: '', phone: '', email: '' });
 
-  const openAdd = () => { setForm({ name: '', country: 'Pakistan', contact: '', phone: '', email: '' }); setEditing(null); setShowAdd(true); };
+  const openAdd = () => { setForm({ name: '', country: 'China', contact: '', phone: '', email: '' }); setEditing(null); setShowAdd(true); };
   const openEdit = (s) => { setForm({ name: s.name, country: s.country, contact: s.contact, phone: s.phone, email: s.email || '' }); setEditing(s); setShowAdd(true); };
 
   const handleSave = () => {

@@ -96,7 +96,7 @@ export function StoreProvider({ children }) {
   const deleteCategory = (id) => update('categories', cs => cs.filter(c => c.id !== id));
 
   // ── SUPPLIERS ─────────────────────────────────────────────────────────────────
-  const addSupplier = (data) => update('suppliers', ss => [...ss, { id: uid('s'), totalOwed: 0, totalPaid: 0, ...data }]);
+  const addSupplier = (data) => update('suppliers', ss => [...ss, { id: uid('s'), totalOwed: 0, totalPaid: 0, country: 'China', ...data }]);
   const editSupplier = (id, data) => update('suppliers', ss => ss.map(s => s.id === id ? { ...s, ...data } : s));
   const deleteSupplier = (id) => update('suppliers', ss => ss.filter(s => s.id !== id));
 
@@ -146,7 +146,7 @@ export function StoreProvider({ children }) {
   };
 
   // ── SHOPKEEPERS ───────────────────────────────────────────────────────────────
-  const addShopkeeper = (data) => update('shopkeepers', ss => [...ss, { id: uid('sk'), balance: 0, ...data }]);
+  const addShopkeeper = (data) => update('shopkeepers', ss => [...ss, { id: uid('sk'), balance: 0, phone: '+92-', ...data }]);
   const editShopkeeper = (id, data) => update('shopkeepers', ss => ss.map(s => s.id === id ? { ...s, ...data } : s));
   const deleteShopkeeper = (id) => update('shopkeepers', ss => ss.filter(s => s.id !== id));
 
@@ -156,6 +156,10 @@ export function StoreProvider({ children }) {
     const total = (data.items || []).reduce((s, l) => s + l.qty * l.unitPrice, 0);
     const invoice = { id, status: 'unpaid', date: data.date, total, ...data };
     setState(prev => {
+      // Only update shopkeeper balance for registered (non-guest) shopkeepers
+      if (data.isGuest || !data.shopkeeperId) {
+        return { ...prev, invoices: [...prev.invoices, invoice] };
+      }
       const sk = prev.shopkeepers.find(s => s.id === data.shopkeeperId);
       const newBalance = (sk?.balance || 0) + total;
       const ledgerEntry = {
@@ -173,6 +177,7 @@ export function StoreProvider({ children }) {
     });
   };
   const editInvoice = (id, data) => update('invoices', invs => invs.map(i => i.id === id ? { ...i, ...data } : i));
+  const deleteInvoice = (id) => update('invoices', invs => invs.filter(i => i.id !== id));
 
   // ── PAYMENTS ──────────────────────────────────────────────────────────────────
   const recordPayment = (shopkeeperId, amount, date = new Date().toISOString().split('T')[0]) => {
@@ -209,7 +214,7 @@ export function StoreProvider({ children }) {
     addVariant, editVariant, deleteVariant,
     addBatch,
     addShopkeeper, editShopkeeper, deleteShopkeeper,
-    addInvoice, editInvoice,
+    addInvoice, editInvoice, deleteInvoice,
     recordPayment,
     addExpense, editExpense, deleteExpense,
   };
