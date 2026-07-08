@@ -1,7 +1,8 @@
 import { useState } from 'react';
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { StoreProvider } from './data/store';
 import { ThemeProvider } from './hooks/useTheme';
+import { getCurrentUser, isAdmin } from './hooks/useAuth';
 import Sidebar from './components/Sidebar';
 import Dashboard from './pages/Dashboard';
 import Inventory from './pages/Inventory';
@@ -12,16 +13,34 @@ import Ledger from './pages/Ledger';
 import Expenses from './pages/Expenses';
 import Settings from './pages/Settings';
 import ImportData from './pages/ImportData';
+import Approvals from './pages/Approvals';
 import Login from './pages/Login';
 import { OCRScanner, VoiceInput, AIFab } from './components/AIFeatures';
+
+// Pages only admin can access
+const ADMIN_ONLY_PATHS = ['/inventory', '/suppliers', '/ledger', '/expenses', '/import', '/settings', '/approvals'];
+
+function GuardedRoute({ children }) {
+  const location = useLocation();
+  const admin = isAdmin();
+  const isAdminOnly = ADMIN_ONLY_PATHS.some(p => location.pathname === p || location.pathname.startsWith(p + '/'));
+  if (isAdminOnly && !admin) {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '60vh', color: 'var(--text2)', gap: 12 }}>
+        <div style={{ fontSize: 48 }}>🔒</div>
+        <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--text)' }}>Access restricted</div>
+        <div style={{ fontSize: 14 }}>This page requires an admin account.</div>
+        <div style={{ fontSize: 13, color: 'var(--text3)' }}>Contact your administrator or log in as admin.</div>
+      </div>
+    );
+  }
+  return children;
+}
 
 function ProtectedLayout({ activeBrand, setActiveBrand }) {
   const [showOCR, setShowOCR] = useState(false);
   const [showVoice, setShowVoice] = useState(false);
   const [ocrPrefill, setOcrPrefill] = useState(null);
-
-  const handleOCRResult = (data) => { setOcrPrefill(data); };
-  const handleVoiceResult = (data) => { console.log('Voice parsed:', data); };
 
   return (
     <div style={{ display: 'flex', minHeight: '100vh' }}>
@@ -29,19 +48,20 @@ function ProtectedLayout({ activeBrand, setActiveBrand }) {
       <main style={{ flex: 1, padding: '28px 32px', overflowY: 'auto', maxWidth: '100%' }}>
         <Routes>
           <Route path="/" element={<Dashboard activeBrand={activeBrand} />} />
-          <Route path="/inventory" element={<Inventory activeBrand={activeBrand} />} />
-          <Route path="/suppliers" element={<Suppliers />} />
-          <Route path="/shopkeepers" element={<Shopkeepers />} />
-          <Route path="/invoices" element={<Invoices activeBrand={activeBrand} prefill={ocrPrefill} />} />
-          <Route path="/ledger" element={<Ledger />} />
-          <Route path="/expenses" element={<Expenses activeBrand={activeBrand} />} />
-          <Route path="/import" element={<ImportData />} />
-          <Route path="/settings" element={<Settings />} />
+          <Route path="/shopkeepers" element={<GuardedRoute><Shopkeepers /></GuardedRoute>} />
+          <Route path="/invoices" element={<GuardedRoute><Invoices activeBrand={activeBrand} prefill={ocrPrefill} /></GuardedRoute>} />
+          <Route path="/inventory" element={<GuardedRoute><Inventory activeBrand={activeBrand} /></GuardedRoute>} />
+          <Route path="/suppliers" element={<GuardedRoute><Suppliers /></GuardedRoute>} />
+          <Route path="/ledger" element={<GuardedRoute><Ledger /></GuardedRoute>} />
+          <Route path="/expenses" element={<GuardedRoute><Expenses activeBrand={activeBrand} /></GuardedRoute>} />
+          <Route path="/import" element={<GuardedRoute><ImportData /></GuardedRoute>} />
+          <Route path="/approvals" element={<GuardedRoute><Approvals /></GuardedRoute>} />
+          <Route path="/settings" element={<GuardedRoute><Settings /></GuardedRoute>} />
         </Routes>
       </main>
       <AIFab onOCR={() => setShowOCR(true)} onVoice={() => setShowVoice(true)} />
-      {showOCR && <OCRScanner onResult={handleOCRResult} onClose={() => setShowOCR(false)} />}
-      {showVoice && <VoiceInput onResult={handleVoiceResult} onClose={() => setShowVoice(false)} />}
+      {showOCR && <OCRScanner onResult={r => setOcrPrefill(r)} onClose={() => setShowOCR(false)} />}
+      {showVoice && <VoiceInput onResult={() => {}} onClose={() => setShowVoice(false)} />}
     </div>
   );
 }
@@ -51,11 +71,9 @@ function AppRoutes() {
   const savedUser = localStorage.getItem('ims_user');
   const [authed, setAuthed] = useState(!!savedUser);
 
-  const handleLogin = (user) => setAuthed(true);
-
   return (
     <Routes>
-      <Route path="/login" element={authed ? <Navigate to="/" /> : <Login onLogin={handleLogin} />} />
+      <Route path="/login" element={authed ? <Navigate to="/" /> : <Login onLogin={() => setAuthed(true)} />} />
       <Route path="/*" element={
         authed
           ? <ProtectedLayout activeBrand={activeBrand} setActiveBrand={setActiveBrand} />
