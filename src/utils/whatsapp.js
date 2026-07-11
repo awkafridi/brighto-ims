@@ -1,5 +1,4 @@
-// Centralized WhatsApp message builders so every part of the app sends
-// consistent, professional messages with full transaction context.
+// Centralized WhatsApp message builders
 
 function fmt(n) {
   return `₨${Number(n || 0).toLocaleString()}`;
@@ -8,86 +7,68 @@ function fmt(n) {
 export function openWhatsApp(phone, message) {
   const cleanPhone = (phone || '').replace(/[^0-9]/g, '');
   if (!cleanPhone) {
-    alert('No phone number saved for this shopkeeper. Please edit their profile and add a phone number first.');
+    // Can't use alert() on GitHub Pages — show in console and use a toast instead
+    console.warn('No phone number for this shopkeeper');
     return;
   }
   const encoded = encodeURIComponent(message);
-  const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
-
-  if (isMobile) {
-    // On mobile — open WhatsApp app directly
-    window.location.href = `whatsapp://send?phone=${cleanPhone}&text=${encoded}`;
-  } else {
-    // On desktop — open WhatsApp Web in a new tab without closing current page
-    const url = `https://web.whatsapp.com/send?phone=${cleanPhone}&text=${encoded}`;
-    const opened = window.open(url, '_blank', 'noopener,noreferrer');
-    if (!opened) {
-      // Popup blocked — fall back to same-tab navigation
-      window.location.href = url;
-    }
-  }
+  // wa.me works on ALL platforms: opens app on mobile, web.whatsapp.com on desktop
+  // Using location.href avoids popup blockers entirely
+  window.location.href = `https://wa.me/${cleanPhone}?text=${encoded}`;
 }
 
-// Sent right after a new invoice/sale is created
 export function buildPurchaseMessage({ shopName, brandName, items, productNames, total, previousBalance, newBalance, date }) {
-  const itemLines = items.map((it, i) => `${i + 1}. ${productNames[i] || 'Item'} × ${it.qty} @ ${fmt(it.unitPrice)}`).join('\n');
+  const itemLines = (items || []).map((it, i) => `${i + 1}. ${productNames?.[i] || 'Item'} × ${it.qty} @ ${fmt(it.unitPrice)}`).join('\n');
   return `Dear ${shopName},
 
-New purchase recorded on ${date}:
+New purchase on ${date}:
 
 ${itemLines}
 
-New purchase amount: ${fmt(total)}
+New purchase: ${fmt(total)}
 Previous balance: ${fmt(previousBalance)}
-*Total remaining balance: ${fmt(newBalance)}*
+*Total balance: ${fmt(newBalance)}*
 
-Thank you for your business!
+Thank you!
 — ${brandName || 'Brighto/Hoshi'} Team`;
 }
 
-// Sent right after a payment is recorded
 export function buildPaymentReceivedMessage({ shopName, brandName, amountReceived, previousBalance, newBalance, date }) {
-  const clearedLine = newBalance <= 0
-    ? '\n✅ Your account is now fully cleared. Thank you!'
-    : `\n*Remaining balance: ${fmt(newBalance)}*`;
+  const cleared = newBalance <= 0 ? '\n✅ Account fully cleared. Thank you!' : `\n*Remaining balance: ${fmt(newBalance)}*`;
   return `Dear ${shopName},
 
 Payment received on ${date}: ${fmt(amountReceived)}
 
-Previous balance: ${fmt(previousBalance)}${clearedLine}
+Previous balance: ${fmt(previousBalance)}${cleared}
 
-Thank you for your payment!
+Thank you!
 — ${brandName || 'Brighto/Hoshi'} Team`;
 }
 
-// Reminder for outstanding balance (used from Shopkeepers page)
 export function buildReminderMessage({ shopName, balance, brandName }) {
   return `Dear ${shopName},
 
-This is a friendly reminder regarding your outstanding balance of ${fmt(balance)}.
+Friendly reminder: your outstanding balance is *${fmt(balance)}*.
 
 Please arrange payment at your earliest convenience.
 
-Thank you for doing business with us.
+Thank you,
 — ${brandName || 'Brighto/Hoshi'} Team`;
 }
 
-// Full account summary — old purchases + payments + remaining balance
 export function buildAccountSummaryMessage({ shopName, brandName, totalPurchased, totalPaid, balance, recentInvoices }) {
-  const recentLines = recentInvoices.slice(0, 5).map(inv =>
-    `• ${inv.date}: ${fmt(inv.total)} (${inv.status})`
-  ).join('\n');
+  const lines = (recentInvoices || []).slice(0, 5).map(inv => `• ${inv.date}: ${fmt(inv.total)} (${inv.status})`).join('\n');
   return `Dear ${shopName},
 
-Your account summary with us:
+Your account summary:
 
-Total purchased to date: ${fmt(totalPurchased)}
-Total paid to date: ${fmt(totalPaid)}
-*Current outstanding balance: ${fmt(balance)}*
+Total purchased: ${fmt(totalPurchased)}
+Total paid: ${fmt(totalPaid)}
+*Outstanding balance: ${fmt(balance)}*
 
 Recent transactions:
-${recentLines || 'None yet'}
+${lines || 'None'}
 
-Thank you for your continued business!
+Thank you!
 — ${brandName || 'Brighto/Hoshi'} Team`;
 }

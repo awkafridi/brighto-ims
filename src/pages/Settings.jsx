@@ -338,15 +338,15 @@ export default function Settings() {
         <>
           <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 12 }}>
             <Btn variant="danger" onClick={handleClearAll}>
-              {confirmClear ? '⚠ Click again to confirm — clears everything' : '🗑 Clear all data (start fresh)'}
+              {confirmClear ? '⚠ Click again to confirm' : '🗑 Clear transactions & balances'}
             </Btn>
             <Btn variant="ghost" onClick={handleRestoreDemo}>
               {confirmDemo ? '⚠ Click again — loads sample data' : '↺ Restore demo data'}
             </Btn>
           </div>
           <div style={{ fontSize: 11, color: 'var(--text3)', lineHeight: 1.7 }}>
-            <strong>Clear all data</strong> — removes every product, invoice, shopkeeper, and transaction. Brands and categories are kept.<br/>
-            <strong>Restore demo data</strong> — reloads the original 85 sample products and demo shopkeepers for testing.
+            <strong>Clear transactions</strong> — deletes all invoices, ledger entries, expenses and batches. Resets all balances to ₨0. Products, shopkeepers, suppliers, brands and categories are <strong style={{ color: 'var(--green)' }}>never deleted</strong>.<br/>
+            <strong>Restore demo data</strong> — reloads sample invoices and transactions for testing features.
           </div>
         </>
       ))}

@@ -30,7 +30,7 @@ function resolveSellingPrice(productId, products) {
 
 // ── Product selector: dropdown + manual entry ─────────────────────────────────
 function ProductSelector({ line, index, onUpdate, products, categories, categoryFilter, activeBrand, onQuickAdd }) {
-  const [mode, setMode] = useState('dropdown'); // 'dropdown' | 'manual'
+  const [mode, setMode] = useState('dropdown');
   const [manualName, setManualName] = useState('');
 
   const filtered = products.filter(p =>
@@ -44,56 +44,89 @@ function ProductSelector({ line, index, onUpdate, products, categories, category
         <input
           value={manualName}
           onChange={e => setManualName(e.target.value)}
-          placeholder="Type product name..."
+          onKeyDown={e => { if (e.key === 'Enter' && manualName.trim()) { onQuickAdd(index, manualName.trim()); setManualName(''); setMode('dropdown'); }}}
+          placeholder="Type product name, press Enter..."
           style={{ flex: 1, padding: '8px 10px', background: 'var(--bg3)', border: '0.5px solid var(--amber)', borderRadius: 'var(--radius)', color: 'var(--text)', outline: 'none', fontSize: 13 }}
+          autoFocus
         />
-        <button
-          onClick={() => { if (manualName.trim()) onQuickAdd(index, manualName.trim()); setManualName(''); setMode('dropdown'); }}
-          style={{ padding: '0 10px', background: 'var(--amber)', color: '#000', border: 'none', borderRadius: 'var(--radius)', cursor: 'pointer', fontSize: 12, fontWeight: 600, whiteSpace: 'nowrap' }}
-        >+ Add</button>
-        <button onClick={() => setMode('dropdown')} style={{ padding: '0 8px', background: 'var(--bg3)', border: '0.5px solid var(--border2)', borderRadius: 'var(--radius)', cursor: 'pointer', color: 'var(--text2)', fontSize: 12 }}>↩</button>
+        <button onClick={() => { if (manualName.trim()) { onQuickAdd(index, manualName.trim()); setManualName(''); setMode('dropdown'); }}}
+          style={{ padding: '0 10px', background: 'var(--amber)', color: '#000', border: 'none', borderRadius: 'var(--radius)', cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>
+          + Add
+        </button>
+        <button onClick={() => { setMode('dropdown'); setManualName(''); }}
+          style={{ padding: '0 8px', background: 'var(--bg3)', border: '0.5px solid var(--border2)', borderRadius: 'var(--radius)', cursor: 'pointer', color: 'var(--text2)', fontSize: 12 }}>
+          ↩
+        </button>
       </div>
     );
   }
+
+  // Build a FLAT list of options — no nested optgroups (invalid HTML, browsers ignore them)
+  // Each category is an optgroup header; products and variants are plain options with indented text
+  const buildOptions = () => {
+    const opts = [];
+
+    // Products per category
+    categories.forEach(cat => {
+      const catProds = filtered.filter(p => p.categoryId === cat.id);
+      if (!catProds.length) return;
+
+      opts.push(
+        <optgroup key={`cat-${cat.id}`} label={`${cat.icon} ${cat.name}`}>
+          {catProds.map(p => [
+            // Main product
+            <option key={p.id} value={p.id}>
+              {p.name} — ₨{p.sellingPrice || 0} | stock: {p.stock || 0}
+            </option>,
+            // Variants indented with arrow
+            ...(p.variants || []).map(v => (
+              <option key={v.id} value={v.id}>
+                {'  ↳ '}{v.name} — ₨{v.sellingPrice || p.sellingPrice || 0} | stock: {v.stock || 0}
+              </option>
+            ))
+          ])}
+        </optgroup>
+      );
+    });
+
+    // Products with no category
+    const uncategorized = filtered.filter(p => !categories.find(c => c.id === p.categoryId));
+    if (uncategorized.length) {
+      opts.push(
+        <optgroup key="uncat" label="Other">
+          {uncategorized.map(p => [
+            <option key={p.id} value={p.id}>{p.name} — ₨{p.sellingPrice || 0}</option>,
+            ...(p.variants || []).map(v => (
+              <option key={v.id} value={v.id}>{'  ↳ '}{v.name} — ₨{v.sellingPrice || p.sellingPrice || 0}</option>
+            ))
+          ])}
+        </optgroup>
+      );
+    }
+
+    return opts;
+  };
 
   return (
     <div style={{ display: 'flex', gap: 4 }}>
       <select
         value={line.productId}
-        onChange={e => onUpdate(index, 'productId', e.target.value)}
-        style={{ flex: 1, padding: '8px 8px', background: 'var(--bg3)', border: '0.5px solid var(--border2)', borderRadius: 'var(--radius)', color: 'var(--text)', outline: 'none', fontSize: 12, cursor: 'pointer' }}
+        onChange={e => {
+          const val = e.target.value;
+          onUpdate(index, 'productId', val);
+        }}
+        style={{ flex: 1, padding: '8px 8px', background: 'var(--bg3)', border: '0.5px solid var(--border2)', borderRadius: 'var(--radius)', color: 'var(--text)', outline: 'none', fontSize: 13, cursor: 'pointer' }}
       >
-        <option value="">— select product —</option>
-        {filtered.length === 0 && <option disabled>No products — add in Inventory</option>}
-        {categories.map(cat => {
-          const catProds = filtered.filter(p => p.categoryId === cat.id);
-          if (!catProds.length) return null;
-          return (
-            <optgroup key={cat.id} label={`${cat.icon} ${cat.name}`}>
-              {catProds.map(p => (
-                <optgroup key={p.id} label={`  📦 ${p.name} — ₨${p.sellingPrice || 0}`}>
-                  <option value={p.id}>↳ {p.name} (general) — ₨{p.sellingPrice || 0} | stock: {p.stock || 0}</option>
-                  {(p.variants || []).map(v => (
-                    <option key={v.id} value={v.id}>↳ {v.name} — ₨{v.sellingPrice || p.sellingPrice || 0} | stock: {v.stock || 0}</option>
-                  ))}
-                </optgroup>
-              ))}
-            </optgroup>
-          );
-        })}
-        {filtered.filter(p => !categories.find(c => c.id === p.categoryId)).map(p => (
-          <optgroup key={p.id} label={`📦 ${p.name}`}>
-            <option value={p.id}>↳ {p.name} — ₨{p.sellingPrice || 0}</option>
-            {(p.variants || []).map(v => (
-              <option key={v.id} value={v.id}>↳ {v.name} — ₨{v.sellingPrice || p.sellingPrice || 0}</option>
-            ))}
-          </optgroup>
-        ))}
+        <option value="">— select product or variant —</option>
+        {filtered.length === 0
+          ? <option disabled>No products found — add in Inventory first</option>
+          : buildOptions()
+        }
       </select>
       <button
         onClick={() => setMode('manual')}
-        title="Type product name manually"
-        style={{ padding: '0 8px', background: 'var(--amber-dim)', color: 'var(--amber)', border: '0.5px solid rgba(251,191,36,0.3)', borderRadius: 'var(--radius)', cursor: 'pointer', fontSize: 11, whiteSpace: 'nowrap', fontWeight: 600 }}
+        title="Type a product name manually"
+        style={{ padding: '0 8px', background: 'var(--amber-dim)', color: 'var(--amber)', border: '0.5px solid rgba(251,191,36,0.3)', borderRadius: 'var(--radius)', cursor: 'pointer', fontSize: 11, fontWeight: 600, whiteSpace: 'nowrap' }}
       >✏ Manual</button>
     </div>
   );

@@ -31,39 +31,39 @@ export const suppliers = [
 
 export const products = [
   // ── LED Bulbs (c1) ────────────────────────────────────────────────────────
-  { id: 'p1',  name: '3W LED Bulb',      sku: 'BRT-LED-3W',   brandId: 'b1', categoryId: 'c1', unit: 'pcs', avgCost: 28,  sellingPrice: 45,   stock: 2000, variants: [
+  { id: 'p1',  name: '3W LED Bulb',      sku: 'BRT-LED-3W',   brandId: 'b1', categoryId: 'c1', unit: 'pcs', avgCost: 28,  sellingPrice: 45,   stock: 0, variants: [
     { id: 'v1a', name: 'E27 Base – Warm White', sku: 'BRT-LED-3W-E27-WW', sellingPrice: 45, stock: 0 },
-    { id: 'v1b', name: 'E27 Base – Cool White', sku: 'BRT-LED-3W-E27-CW', sellingPrice: 45, stock: 600  },
-    { id: 'v1c', name: 'B22 Base – Warm White', sku: 'BRT-LED-3W-B22-WW', sellingPrice: 48, stock: 400  },
+    { id: 'v1b', name: 'E27 Base – Cool White', sku: 'BRT-LED-3W-E27-CW', sellingPrice: 45, stock: 0},
+    { id: 'v1c', name: 'B22 Base – Warm White', sku: 'BRT-LED-3W-B22-WW', sellingPrice: 48, stock: 0},
   ]},
-  { id: 'p2',  name: '5W LED Bulb',      sku: 'BRT-LED-5W',   brandId: 'b1', categoryId: 'c1', unit: 'pcs', avgCost: 35,  sellingPrice: 55,   stock: 3000, variants: [
+  { id: 'p2',  name: '5W LED Bulb',      sku: 'BRT-LED-5W',   brandId: 'b1', categoryId: 'c1', unit: 'pcs', avgCost: 35,  sellingPrice: 55,   stock: 0, variants: [
     { id: 'v2a', name: 'E27 – Warm White', sku: 'BRT-LED-5W-WW', sellingPrice: 55, stock: 0 },
-    { id: 'v2b', name: 'E27 – Cool White', sku: 'BRT-LED-5W-CW', sellingPrice: 55, stock: 900  },
-    { id: 'v2c', name: 'B22 – Warm White', sku: 'BRT-LED-5W-B22', sellingPrice: 58, stock: 600  },
+    { id: 'v2b', name: 'E27 – Cool White', sku: 'BRT-LED-5W-CW', sellingPrice: 55, stock: 0},
+    { id: 'v2c', name: 'B22 – Warm White', sku: 'BRT-LED-5W-B22', sellingPrice: 58, stock: 0},
   ]},
-  { id: 'p3',  name: '7W LED Bulb',      sku: 'BRT-LED-7W',   brandId: 'b1', categoryId: 'c1', unit: 'pcs', avgCost: 45,  sellingPrice: 70,   stock: 2500, variants: [
-    { id: 'v3a', name: 'E27 – Warm White', sku: 'BRT-LED-7W-WW', sellingPrice: 70,  stock: 1200 },
-    { id: 'v3b', name: 'E27 – Cool White', sku: 'BRT-LED-7W-CW', sellingPrice: 70,  stock: 800  },
-    { id: 'v3c', name: 'B22 – Warm White', sku: 'BRT-LED-7W-B22', sellingPrice: 72, stock: 500  },
+  { id: 'p3',  name: '7W LED Bulb',      sku: 'BRT-LED-7W',   brandId: 'b1', categoryId: 'c1', unit: 'pcs', avgCost: 45,  sellingPrice: 70,   stock: 0, variants: [
+    { id: 'v3a', name: 'E27 – Warm White', sku: 'BRT-LED-7W-WW', sellingPrice: 70,  stock: 0},
+    { id: 'v3b', name: 'E27 – Cool White', sku: 'BRT-LED-7W-CW', sellingPrice: 70,  stock: 0},
+    { id: 'v3c', name: 'B22 – Warm White', sku: 'BRT-LED-7W-B22', sellingPrice: 72, stock: 0},
   ]},
-  { id: 'p4',  name: '9W LED Bulb',      sku: 'BRT-LED-9W',   brandId: 'b1', categoryId: 'c1', unit: 'pcs', avgCost: 55,  sellingPrice: 85,   stock: 1800, variants: [
+  { id: 'p4',  name: '9W LED Bulb',      sku: 'BRT-LED-9W',   brandId: 'b1', categoryId: 'c1', unit: 'pcs', avgCost: 55,  sellingPrice: 85,   stock: 0, variants: [
     { id: 'v4a', name: 'E27 – Warm White', sku: 'BRT-LED-9W-WW', sellingPrice: 85, stock: 0 },
     { id: 'v4b', name: 'E27 – Cool White', sku: 'BRT-LED-9W-CW', sellingPrice: 85, stock: 0 },
     { id: 'v4c', name: 'B22 – Daylight',   sku: 'BRT-LED-9W-DL', sellingPrice: 88, stock: 0 },
   ]},
-  { id: 'p5',  name: '12W LED Bulb',     sku: 'BRT-LED-12W',  brandId: 'b1', categoryId: 'c1', unit: 'pcs', avgCost: 95,  sellingPrice: 150,  stock: 840, variants: [
+  { id: 'p5',  name: '12W LED Bulb',     sku: 'BRT-LED-12W',  brandId: 'b1', categoryId: 'c1', unit: 'pcs', avgCost: 95,  sellingPrice: 150,  stock: 0, variants: [
     { id: 'v5a', name: 'E27 – Warm White 3000K', sku: 'BRT-LED-12W-WW', sellingPrice: 150, stock: 0 },
     { id: 'v5b', name: 'E27 – Cool White 6500K', sku: 'BRT-LED-12W-CW', sellingPrice: 150, stock: 0 },
     { id: 'v5c', name: 'B22 – Warm White',        sku: 'BRT-LED-12W-B22',sellingPrice: 155, stock: 0 },
   ]},
-  { id: 'p6',  name: '15W LED Bulb',     sku: 'BRT-LED-15W',  brandId: 'b1', categoryId: 'c1', unit: 'pcs', avgCost: 120, sellingPrice: 185,  stock: 600, variants: [] },
-  { id: 'p7',  name: '18W LED Bulb',     sku: 'BRT-LED-18W',  brandId: 'b1', categoryId: 'c1', unit: 'pcs', avgCost: 145, sellingPrice: 220,  stock: 500, variants: [] },
-  { id: 'p8',  name: '7W LED Bulb',      sku: 'HSH-LED-7W',   brandId: 'b2', categoryId: 'c1', unit: 'pcs', avgCost: 65,  sellingPrice: 100,  stock: 1200, variants: [
+  { id: 'p6',  name: '15W LED Bulb',     sku: 'BRT-LED-15W',  brandId: 'b1', categoryId: 'c1', unit: 'pcs', avgCost: 120, sellingPrice: 185,  stock: 0, variants: [] },
+  { id: 'p7',  name: '18W LED Bulb',     sku: 'BRT-LED-18W',  brandId: 'b1', categoryId: 'c1', unit: 'pcs', avgCost: 145, sellingPrice: 220,  stock: 0, variants: [] },
+  { id: 'p8',  name: '7W LED Bulb',      sku: 'HSH-LED-7W',   brandId: 'b2', categoryId: 'c1', unit: 'pcs', avgCost: 65,  sellingPrice: 100,  stock: 0, variants: [
     { id: 'v8a', name: 'E27 – Warm White', sku: 'HSH-LED-7W-WW', sellingPrice: 100, stock: 0 },
     { id: 'v8b', name: 'E27 – Cool White', sku: 'HSH-LED-7W-CW', sellingPrice: 100, stock: 0 },
   ]},
-  { id: 'p9',  name: '12W LED Bulb',     sku: 'HSH-LED-12W',  brandId: 'b2', categoryId: 'c1', unit: 'pcs', avgCost: 90,  sellingPrice: 140,  stock: 900, variants: [] },
-  { id: 'p10', name: '18W LED Bulb',     sku: 'HSH-LED-18W',  brandId: 'b2', categoryId: 'c1', unit: 'pcs', avgCost: 140, sellingPrice: 210,  stock: 400, variants: [] },
+  { id: 'p9',  name: '12W LED Bulb',     sku: 'HSH-LED-12W',  brandId: 'b2', categoryId: 'c1', unit: 'pcs', avgCost: 90,  sellingPrice: 140,  stock: 0, variants: [] },
+  { id: 'p10', name: '18W LED Bulb',     sku: 'HSH-LED-18W',  brandId: 'b2', categoryId: 'c1', unit: 'pcs', avgCost: 140, sellingPrice: 210,  stock: 0, variants: [] },
 
   // ── Panel Lights (c2) ─────────────────────────────────────────────────────
   { id: 'p11', name: '12W Panel Light Round',  sku: 'BRT-PNL-12R', brandId: 'b1', categoryId: 'c2', unit: 'pcs', avgCost: 220, sellingPrice: 350, stock: 0, variants: [
@@ -77,7 +77,7 @@ export const products = [
   { id: 'p13', name: '24W Panel Light Square', sku: 'BRT-PNL-24S', brandId: 'b1', categoryId: 'c2', unit: 'pcs', avgCost: 420, sellingPrice: 650, stock: 0, variants: [] },
   { id: 'p14', name: '36W Panel Light Square', sku: 'BRT-PNL-36S', brandId: 'b1', categoryId: 'c2', unit: 'pcs', avgCost: 580, sellingPrice: 900, stock: 0, variants: [] },
   { id: 'p15', name: '24W Panel Light',        sku: 'HSH-PNL-24W', brandId: 'b2', categoryId: 'c2', unit: 'pcs', avgCost: 420, sellingPrice: 650, stock: 0, variants: [] },
-  { id: 'p16', name: '48W Panel Light',        sku: 'HSH-PNL-48W', brandId: 'b2', categoryId: 'c2', unit: 'pcs', avgCost: 780, sellingPrice: 1200,stock: 80, variants: [] },
+  { id: 'p16', name: '48W Panel Light',        sku: 'HSH-PNL-48W', brandId: 'b2', categoryId: 'c2', unit: 'pcs', avgCost: 780, sellingPrice: 1200,stock: 0, variants: [] },
 
   // ── Cables & Wires (c3) ───────────────────────────────────────────────────
   { id: 'p17', name: '1mm Single Core Cable (100m)',  sku: 'CBL-1MM-100',  brandId: 'b1', categoryId: 'c3', unit: 'roll', avgCost: 0, sellingPrice: 0, stock: 0, variants: [] },

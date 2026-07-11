@@ -67,22 +67,23 @@ export function StoreProvider({ children }) {
     setState(DEFAULT_STATE);
   };
 
-  // Wipes everything to a clean, empty slate — for real business use
+  // Wipes ONLY transactional data — invoices, ledger, expenses
+  // Products, shopkeepers, suppliers, brands, categories are NEVER deleted
   const clearAll = () => {
-    const empty = {
-      brands: DEFAULT_STATE.brands,        // keep brand names (Brighto/Hoshi) — just no transactional data
-      categories: DEFAULT_STATE.categories, // keep category list — just no transactional data
-      suppliers: [],
-      products: [],
-      batches: [],
-      shopkeepers: [],
+    const cleared = {
+      ...state,
       invoices: [],
       ledgerEntries: [],
       expenses: [],
+      batches: [],
+      // Reset shopkeeper balances to 0 but keep the shopkeepers
+      shopkeepers: state.shopkeepers.map(s => ({ ...s, balance: 0 })),
+      // Reset supplier balances but keep suppliers
+      suppliers: state.suppliers.map(s => ({ ...s, totalOwed: 0, totalPaid: 0 })),
       monthlySales: [],
     };
-    localStorage.removeItem(STORAGE_KEY);
-    setState(empty);
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(cleared));
+    setState(cleared);
   };
 
   // ── BRANDS ───────────────────────────────────────────────────────────────────
