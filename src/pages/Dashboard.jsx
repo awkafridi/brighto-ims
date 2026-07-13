@@ -14,7 +14,7 @@ function ageBucket(date) {
 }
 
 export default function Dashboard({ activeBrand }) {
-  const { brands, invoices, expenses, products, shopkeepers, monthlySales, ledgerEntries } = useStore();
+  const { brands, invoices, expenses, products, batches, shopkeepers, monthlySales, ledgerEntries } = useStore();
   const { speakSummary } = useAudio();
   const [audioLang, setAudioLang] = useState('en');
 
@@ -26,11 +26,26 @@ export default function Dashboard({ activeBrand }) {
   const totalRecovered = ledgerEntries.filter(e => e.type === 'payment').reduce((s, e) => s + e.credit, 0);
   const totalReceivables = shopkeepers.reduce((s, sk) => s + sk.balance, 0);
   const totalExpenses = filteredExpenses.reduce((s, e) => s + e.amount, 0);
-  const avgCostTotal = filteredInvoices.reduce((s, inv) => s + (inv.items || []).reduce((a, line) => {
-    const p = products.find(p => p.id === line.productId);
-    return a + (p ? p.avgCost * line.qty : 0);
+
+  // COGS Profitability — resolve real unit cost from the product's linked batch
+  // (FIFO: oldest batch with remaining stock) instead of a static margin multiplier.
+  // Falls back to the product's weighted-average cost if no batch is available.
+  const getBatchUnitCost = (productId) => {
+    const productBatches = batches
+      .filter(b => b.productId === productId && (b.qtyRemaining ?? b.qtyReceived ?? 0) > 0)
+      .sort((a, b) => new Date(a.purchase_date || a.date) - new Date(b.purchase_date || b.date));
+    if (productBatches.length > 0) return productBatches[0].unitCost || 0;
+    const product = products.find(p => p.id === productId);
+    return product?.avgCost || 0;
+  };
+
+  const grossProfit = filteredInvoices.reduce((sum, inv) => sum + (inv.items || []).reduce((lineSum, line) => {
+    const unitCost = getBatchUnitCost(line.productId);
+    // Profit = (SalePrice - UnitCost) * Quantity
+    return lineSum + (line.unitPrice - unitCost) * line.qty;
   }, 0), 0);
-  const netProfit = totalSales - avgCostTotal - totalExpenses;
+
+  const netProfit = grossProfit - totalExpenses;
 
   const topDebtors = [...shopkeepers].filter(s => s.balance > 0).sort((a, b) => b.balance - a.balance);
 

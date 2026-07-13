@@ -14,9 +14,14 @@ export function BusinessManager({ onClose }) {
   const [showAddCat, setShowAddCat] = useState(false);
   const [brandForm, setBrandForm] = useState({ name: '', color: BRAND_COLORS[0] });
   const [catForm, setCatForm] = useState({ name: '', icon: '💡' });
+  const [formError, setFormError] = useState('');
 
   const saveBrand = () => {
-    if (!brandForm.name.trim()) return;
+    if (!brandForm.name.trim()) {
+      setFormError('Name is required');
+      return;
+    }
+    setFormError('');
     if (editingBrand) {
       editBrand(editingBrand.id, brandForm);
       setEditingBrand(null);
@@ -28,7 +33,11 @@ export function BusinessManager({ onClose }) {
   };
 
   const saveCat = () => {
-    if (!catForm.name.trim()) return;
+    if (!catForm.name.trim()) {
+      setFormError('Name is required');
+      return;
+    }
+    setFormError('');
     if (editingCat) {
       editCategory(editingCat.id, catForm);
       setEditingCat(null);
@@ -39,15 +48,15 @@ export function BusinessManager({ onClose }) {
     setCatForm({ name: '', icon: '💡' });
   };
 
-  const startEditBrand = (b) => { setEditingBrand(b); setBrandForm({ name: b.name, color: b.color }); };
-  const startEditCat = (c) => { setEditingCat(c); setCatForm({ name: c.name, icon: c.icon }); };
+  const startEditBrand = (b) => { setEditingBrand(b); setBrandForm({ name: b.name, color: b.color }); setFormError(''); };
+  const startEditCat = (c) => { setEditingCat(c); setCatForm({ name: c.name, icon: c.icon }); setFormError(''); };
 
   return (
     <Modal title="🏢 Business Names & Categories" onClose={onClose} width={680}>
       {/* Tabs */}
       <div style={{ display: 'flex', gap: 6, marginBottom: 20 }}>
         {['brands', 'categories'].map(t => (
-          <button key={t} onClick={() => setTab(t)} style={{
+          <button key={t} onClick={() => { setTab(t); setFormError(''); }} style={{
             padding: '6px 18px', borderRadius: 20, fontSize: 13, fontWeight: 500,
             background: tab === t ? 'var(--accent)' : 'var(--bg3)',
             color: tab === t ? '#fff' : 'var(--text2)',
@@ -78,7 +87,7 @@ export function BusinessManager({ onClose }) {
               </div>
             ))}
           </div>
-          <Btn onClick={() => setShowAddBrand(true)}>+ Add brand</Btn>
+          <Btn onClick={() => { setShowAddBrand(true); setFormError(''); }}>+ Add brand</Btn>
 
           {(showAddBrand || editingBrand) && (
             <div style={{ marginTop: 16, padding: 16, background: 'var(--bg3)', borderRadius: 'var(--radius)', border: '0.5px solid var(--border2)' }}>
@@ -96,9 +105,14 @@ export function BusinessManager({ onClose }) {
                 </div>
               </div>
               <div style={{ display: 'flex', gap: 8 }}>
-                <Btn variant="ghost" onClick={() => { setShowAddBrand(false); setEditingBrand(null); setBrandForm({ name: '', color: BRAND_COLORS[0] }); }}>Cancel</Btn>
+                <Btn variant="ghost" onClick={() => { setShowAddBrand(false); setEditingBrand(null); setBrandForm({ name: '', color: BRAND_COLORS[0] }); setFormError(''); }}>Cancel</Btn>
                 <Btn onClick={saveBrand}>{editingBrand ? 'Save changes' : 'Add brand'}</Btn>
               </div>
+              {formError && (
+                <div style={{ color: 'var(--red)', fontSize: 12, marginTop: 10, padding: '6px 10px', background: 'var(--red-dim)', borderRadius: 'var(--radius)' }}>
+                  ⚠ {formError}
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -123,7 +137,7 @@ export function BusinessManager({ onClose }) {
               </div>
             ))}
           </div>
-          <Btn onClick={() => setShowAddCat(true)}>+ Add category</Btn>
+          <Btn onClick={() => { setShowAddCat(true); setFormError(''); }}>+ Add category</Btn>
 
           {(showAddCat || editingCat) && (
             <div style={{ marginTop: 16, padding: 16, background: 'var(--bg3)', borderRadius: 'var(--radius)', border: '0.5px solid var(--border2)' }}>
@@ -141,9 +155,14 @@ export function BusinessManager({ onClose }) {
                 </div>
               </div>
               <div style={{ display: 'flex', gap: 8 }}>
-                <Btn variant="ghost" onClick={() => { setShowAddCat(false); setEditingCat(null); setCatForm({ name: '', icon: '💡' }); }}>Cancel</Btn>
+                <Btn variant="ghost" onClick={() => { setShowAddCat(false); setEditingCat(null); setCatForm({ name: '', icon: '💡' }); setFormError(''); }}>Cancel</Btn>
                 <Btn onClick={saveCat}>{editingCat ? 'Save changes' : 'Add category'}</Btn>
               </div>
+              {formError && (
+                <div style={{ color: 'var(--red)', fontSize: 12, marginTop: 10, padding: '6px 10px', background: 'var(--red-dim)', borderRadius: 'var(--radius)' }}>
+                  ⚠ {formError}
+                </div>
+              )}
             </div>
           )}
         </div>

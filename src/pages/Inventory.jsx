@@ -243,11 +243,15 @@ export default function Inventory({ activeBrand }) {
   const [catFilter, setCatFilter] = useState('all');
   const [confirmDelete, setConfirmDelete] = useState(null);
 
-  // Always get fresh default brand/category so empty-after-reset doesn't break save
+  // Always get fresh default brand/category so empty-after-reset doesn't break save.
+  // Defaults to the currently active Sidebar brand filter (not brands[0]) so a
+  // newly added product doesn't vanish because it doesn't match the active filter.
   const getEmptyForm = () => ({
     name: '',
     sku: '',
-    brandId: brands[0]?.id || '',
+    brandId: (activeBrand && activeBrand !== 'all' && brands.some(b => b.id === activeBrand))
+      ? activeBrand
+      : (brands[0]?.id || ''),
     categoryId: categories[0]?.id || '',
     unit: 'pcs',
     sellingPrice: '',

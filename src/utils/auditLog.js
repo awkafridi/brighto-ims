@@ -6,6 +6,12 @@
 const AUDIT_KEY    = 'ims_audit_log';
 const PENDING_KEY  = 'ims_pending_approvals';
 
+// Log rotation — once the audit log exceeds this many entries, the oldest
+// chunk is auto-downloaded as a JSON archive and dropped from localStorage
+// so the app stays comfortably under the browser's storage quota.
+const ROTATION_THRESHOLD = 1000;
+const ROTATION_CHUNK = 500;
+
 export function getAuditLog() {
   try { return JSON.parse(localStorage.getItem(AUDIT_KEY) || '[]'); } catch { return []; }
 }
@@ -14,8 +20,44 @@ export function getPendingApprovals() {
   try { return JSON.parse(localStorage.getItem(PENDING_KEY) || '[]'); } catch { return []; }
 }
 
+// Triggers a browser download of `data` as a formatted JSON file.
+function downloadJSON(data, filename) {
+  if (typeof document === 'undefined') return; // safety for non-browser/offline contexts
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+// Archives the oldest `count` entries of `log` as a downloadable JSON file
+// and returns the remaining (trimmed) log. Exported so it can also be
+// triggered manually (e.g. from a Settings "Archive now" button).
+export function rotateAuditLog(log, count = ROTATION_CHUNK) {
+  if (log.length <= count) return log;
+  const oldest = log.slice(0, count);
+  const remaining = log.slice(count);
+  const filename = `audit-log-archive-${new Date().toISOString().split('T')[0]}-${Date.now()}.json`;
+  try {
+    downloadJSON(oldest, filename);
+  } catch (e) {
+    console.warn('Audit log auto-archive download failed; keeping entries to avoid data loss', e);
+    return log; // don't drop entries if the download failed
+  }
+  return remaining;
+}
+
 function saveAuditLog(log) {
-  localStorage.setItem(AUDIT_KEY, JSON.stringify(log.slice(-200))); // keep last 200
+  const toSave = log.length > ROTATION_THRESHOLD ? rotateAuditLog(log, ROTATION_CHUNK) : log;
+  try {
+    localStorage.setItem(AUDIT_KEY, JSON.stringify(toSave));
+  } catch (e) {
+    console.warn('Could not save audit log to localStorage', e);
+  }
 }
 
 function savePending(items) {
