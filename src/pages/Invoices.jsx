@@ -5,6 +5,7 @@ import { useAudio } from '../hooks/useAudio';
 import { getCurrentUser, isAdmin } from '../hooks/useAuth';
 import { openWhatsApp, buildPurchaseMessage } from '../utils/whatsapp';
 import { createApprovalRequest, logAudit } from '../utils/auditLog';
+import { calcLineProfit } from '../utils/cogs';
 
 const statusColor = { paid: 'green', partial: 'amber', unpaid: 'red' };
 
@@ -133,7 +134,7 @@ function ProductSelector({ line, index, onUpdate, products, categories, category
 }
 
 export default function Invoices({ activeBrand }) {
-  const { invoices, shopkeepers, products, brands, categories, addInvoice, editInvoice, deleteInvoice, addProduct } = useStore();
+  const { invoices, shopkeepers, products, brands, categories, batches, addInvoice, editInvoice, deleteInvoice, addProduct } = useStore();
   const { speakInvoice } = useAudio();
   const user = getCurrentUser();
   const admin = isAdmin();
@@ -331,6 +332,13 @@ export default function Invoices({ activeBrand }) {
             { key: 'qty', label: 'Qty', align: 'right' },
             { key: 'unitPrice', label: 'Unit ₨', align: 'right', render: v => `₨${v}` },
             { key: 'total', label: 'Total', align: 'right', render: (_, row) => <strong>₨{(row.qty * row.unitPrice).toLocaleString()}</strong> },
+            ...(admin ? [{
+              key: 'profit', label: 'Profit', align: 'right', render: (_, row) => {
+                const p = products.find(p => p.id === row.productId);
+                const profit = calcLineProfit(row, p, batches);
+                return <span style={{ color: profit >= 0 ? 'var(--green)' : 'var(--red)', fontWeight: 600 }}>₨{profit.toLocaleString()}</span>;
+              }
+            }] : []),
           ]} data={selected.items || []} />
 
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 0', borderTop: '0.5px solid var(--border)', marginTop: 12, flexWrap: 'wrap', gap: 8 }}>

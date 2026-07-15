@@ -18,7 +18,16 @@ export function BusinessManager({ onClose }) {
 
   const saveBrand = () => {
     if (!brandForm.name.trim()) {
-      setFormError('Name is required');
+      setFormError('Brand name is required.');
+      return;
+    }
+    // Prevent duplicate brand names (case-insensitive), excluding the one being edited
+    const dup = brands.some(b =>
+      b.name.trim().toLowerCase() === brandForm.name.trim().toLowerCase() &&
+      b.id !== editingBrand?.id
+    );
+    if (dup) {
+      setFormError('A brand with this name already exists.');
       return;
     }
     setFormError('');
@@ -34,7 +43,15 @@ export function BusinessManager({ onClose }) {
 
   const saveCat = () => {
     if (!catForm.name.trim()) {
-      setFormError('Name is required');
+      setFormError('Category name is required.');
+      return;
+    }
+    const dup = categories.some(c =>
+      c.name.trim().toLowerCase() === catForm.name.trim().toLowerCase() &&
+      c.id !== editingCat?.id
+    );
+    if (dup) {
+      setFormError('A category with this name already exists.');
       return;
     }
     setFormError('');
@@ -104,15 +121,15 @@ export function BusinessManager({ onClose }) {
                   ))}
                 </div>
               </div>
+              {formError && (
+                <div style={{ color: 'var(--red)', fontSize: 13, padding: '8px 12px', background: 'var(--red-dim)', borderRadius: 'var(--radius)', marginBottom: 12 }}>
+                  ⚠ {formError}
+                </div>
+              )}
               <div style={{ display: 'flex', gap: 8 }}>
                 <Btn variant="ghost" onClick={() => { setShowAddBrand(false); setEditingBrand(null); setBrandForm({ name: '', color: BRAND_COLORS[0] }); setFormError(''); }}>Cancel</Btn>
                 <Btn onClick={saveBrand}>{editingBrand ? 'Save changes' : 'Add brand'}</Btn>
               </div>
-              {formError && (
-                <div style={{ color: 'var(--red)', fontSize: 12, marginTop: 10, padding: '6px 10px', background: 'var(--red-dim)', borderRadius: 'var(--radius)' }}>
-                  ⚠ {formError}
-                </div>
-              )}
             </div>
           )}
         </div>
@@ -154,15 +171,15 @@ export function BusinessManager({ onClose }) {
                   ))}
                 </div>
               </div>
+              {formError && (
+                <div style={{ color: 'var(--red)', fontSize: 13, padding: '8px 12px', background: 'var(--red-dim)', borderRadius: 'var(--radius)', marginBottom: 12 }}>
+                  ⚠ {formError}
+                </div>
+              )}
               <div style={{ display: 'flex', gap: 8 }}>
                 <Btn variant="ghost" onClick={() => { setShowAddCat(false); setEditingCat(null); setCatForm({ name: '', icon: '💡' }); setFormError(''); }}>Cancel</Btn>
                 <Btn onClick={saveCat}>{editingCat ? 'Save changes' : 'Add category'}</Btn>
               </div>
-              {formError && (
-                <div style={{ color: 'var(--red)', fontSize: 12, marginTop: 10, padding: '6px 10px', background: 'var(--red-dim)', borderRadius: 'var(--radius)' }}>
-                  ⚠ {formError}
-                </div>
-              )}
             </div>
           )}
         </div>

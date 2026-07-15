@@ -5,6 +5,7 @@ import {
   invoices as initInvoices, ledgerEntries as initLedger, expenses as initExpenses,
   monthlySales as initSales
 } from './mockData';
+import { getFIFOUnitCost } from '../utils/cogs';
 
 const StoreContext = createContext(null);
 const STORAGE_KEY = 'brighto_ims_data_v1';
@@ -154,9 +155,21 @@ export function StoreProvider({ children }) {
   // ── INVOICES ──────────────────────────────────────────────────────────────────
   const addInvoice = (data) => {
     const id = uid('inv');
-    const total = (data.items || []).reduce((s, l) => s + l.qty * l.unitPrice, 0);
-    const invoice = { id, status: 'unpaid', date: data.date, total, ...data };
     setState(prev => {
+      // Snapshot the real per-unit cost (from the product's oldest open batch,
+      // FIFO) onto each line at the moment of sale. This is what powers
+      // accurate COGS-based profit in the Dashboard, and keeps historic
+      // invoices stable even if batch costs or averages change later.
+      const itemsWithCost = (data.items || []).map(line => {
+        const product = prev.products.find(p => p.id === line.productId);
+        return {
+          ...line,
+          unitCost: getFIFOUnitCost(line.productId, prev.batches, product),
+        };
+      });
+      const total = itemsWithCost.reduce((s, l) => s + l.qty * l.unitPrice, 0);
+      const invoice = { id, status: 'unpaid', date: data.date, total, ...data, items: itemsWithCost };
+
       // Only update shopkeeper balance for registered (non-guest) shopkeepers
       if (data.isGuest || !data.shopkeeperId) {
         return { ...prev, invoices: [...prev.invoices, invoice] };

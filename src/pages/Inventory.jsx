@@ -244,14 +244,14 @@ export default function Inventory({ activeBrand }) {
   const [confirmDelete, setConfirmDelete] = useState(null);
 
   // Always get fresh default brand/category so empty-after-reset doesn't break save.
-  // Defaults to the currently active Sidebar brand filter (not brands[0]) so a
-  // newly added product doesn't vanish because it doesn't match the active filter.
+  // Defaults brandId to the currently active brand (set in Sidebar) so a product
+  // added while viewing a specific brand doesn't get assigned to a different brand
+  // and then vanish from view due to the brand filter mismatch.
+  const activeBrandExists = activeBrand !== 'all' && brands.some(b => b.id === activeBrand);
   const getEmptyForm = () => ({
     name: '',
     sku: '',
-    brandId: (activeBrand && activeBrand !== 'all' && brands.some(b => b.id === activeBrand))
-      ? activeBrand
-      : (brands[0]?.id || ''),
+    brandId: activeBrandExists ? activeBrand : (brands[0]?.id || ''),
     categoryId: categories[0]?.id || '',
     unit: 'pcs',
     sellingPrice: '',
