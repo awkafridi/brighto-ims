@@ -6,8 +6,23 @@ import { getCurrentUser, isAdmin } from '../hooks/useAuth';
 import { openWhatsApp, buildPurchaseMessage } from '../utils/whatsapp';
 import { createApprovalRequest, logAudit } from '../utils/auditLog';
 import { calcLineProfit } from '../utils/cogs';
+import {
+  SALES_CHANNELS, SALES_STATUSES, PAYMENT_METHODS, DELIVERY_STATUSES, WARRANTY_TYPES,
+  computeInvoiceTotals,
+} from '../utils/sellingCalc';
 
 const statusColor = { paid: 'green', partial: 'amber', unpaid: 'red' };
+
+function SummaryLine({ label, value }) {
+  return (
+    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, marginBottom: 4 }}>
+      <span style={{ color: 'var(--text2)' }}>{label}</span>
+      <span style={{ fontWeight: 500, color: value < 0 ? 'var(--green)' : 'var(--text)' }}>
+        {value < 0 ? '−' : ''}₨{Math.abs(value).toLocaleString()}
+      </span>
+    </div>
+  );
+}
 
 function resolveProductName(productId, products) {
   const main = products.find(p => p.id === productId);
@@ -148,12 +163,21 @@ export default function Invoices({ activeBrand }) {
   const [confirmDelete, setConfirmDelete] = useState(null);
   const [approvalSent, setApprovalSent] = useState(false);
 
-  const [lines, setLines] = useState([{ productId: '', manualName: '', qty: 1, unitPrice: 0 }]);
-  const [invForm, setInvForm] = useState({
+  const [lines, setLines] = useState([{ productId: '', manualName: '', qty: 1, unitPrice: 0, discount: 0 }]);
+  const emptyInvForm = {
     shopkeeperId: '', guestName: '', isGuest: false,
     brandId: brands[0]?.id || '',
-    date: new Date().toISOString().split('T')[0], notes: ''
-  });
+    date: new Date().toISOString().split('T')[0], notes: '',
+    salesChannel: 'Wholesale', salesperson: '', branch: '', salesStatus: 'Confirmed',
+    additionalCharges: [],
+    tax: { gstPercent: '', withholdingTaxPercent: '', otherTaxAmount: '' },
+    delivery: { status: 'Pending', date: '', courier: '', vehicleNumber: '', trackingNumber: '', deliveredBy: '', receivedBy: '', remarks: '' },
+    warranty: { type: '', periodMonths: '', installationRequired: 'No', serviceContract: '' },
+    remarks: { internalNotes: '', customerNotes: '', deliveryInstructions: '', installationInstructions: '', specialPricingApprovalNotes: '' },
+    payment: { method: '', bank: '', transactionRef: '' },
+  };
+  const [invForm, setInvForm] = useState(emptyInvForm);
+  const [showMoreDetails, setShowMoreDetails] = useState(false);
 
   const filtered = invoices.filter(inv => {
     const matchBrand = activeBrand === 'all' || inv.brandId === activeBrand;
@@ -175,7 +199,7 @@ export default function Invoices({ activeBrand }) {
     };
   }, [invForm.shopkeeperId, invForm.isGuest, shopkeepers, invoices]);
 
-  const addLine = () => setLines(l => [...l, { productId: '', manualName: '', qty: 1, unitPrice: 0 }]);
+  const addLine = () => setLines(l => [...l, { productId: '', manualName: '', qty: 1, unitPrice: 0, discount: 0 }]);
   const removeLine = i => setLines(l => l.filter((_, idx) => idx !== i));
 
   const updateLine = (i, field, val) => {
@@ -204,12 +228,23 @@ export default function Invoices({ activeBrand }) {
     logAudit({ user, action: 'create', resourceType: 'product', resourceId: tempId, detail: `Quick-added product "${name}" from invoice`, approved: true });
   };
 
-  const lineTotal = lines.reduce((s, l) => s + (Number(l.qty) * Number(l.unitPrice)), 0);
+  // Live financial breakdown for the form in progress — product subtotal,
+  // discounts, additional charges, tax, and the real grand total (matches
+  // the "Invoice Summary" section of the Selling Details spec).
+  const liveTotals = useMemo(
+    () => computeInvoiceTotals({ items: lines, additionalCharges: invForm.additionalCharges, tax: invForm.tax }),
+    [lines, invForm.additionalCharges, invForm.tax]
+  );
+
+  const addCharge = () => setInvForm(f => ({ ...f, additionalCharges: [...f.additionalCharges, { id: `chg-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`, label: '', amount: '' }] }));
+  const updateCharge = (id, field, value) => setInvForm(f => ({ ...f, additionalCharges: f.additionalCharges.map(c => c.id === id ? { ...c, [field]: value } : c) }));
+  const removeCharge = (id) => setInvForm(f => ({ ...f, additionalCharges: f.additionalCharges.filter(c => c.id !== id) }));
 
   const resetForm = () => {
-    setLines([{ productId: '', manualName: '', qty: 1, unitPrice: 0 }]);
-    setInvForm({ shopkeeperId: '', guestName: '', isGuest: false, brandId: brands[0]?.id || '', date: new Date().toISOString().split('T')[0], notes: '' });
+    setLines([{ productId: '', manualName: '', qty: 1, unitPrice: 0, discount: 0 }]);
+    setInvForm({ ...emptyInvForm, brandId: brands[0]?.id || '', date: new Date().toISOString().split('T')[0] });
     setCategoryFilter('all');
+    setShowMoreDetails(false);
   };
 
   const handleCreate = () => {
@@ -227,7 +262,8 @@ export default function Invoices({ activeBrand }) {
       const brand = brands.find(b => b.id === invForm.brandId);
       if (sk?.phone) {
         const productNames = validLines.map(l => l.manualName || resolveProductName(l.productId, products));
-        const message = buildPurchaseMessage({ shopName: sk.shopName, brandName: brand?.name, items: validLines, productNames, total: lineTotal, previousBalance: sk.balance, newBalance: sk.balance + lineTotal, date: invForm.date });
+        const grandTotal = liveTotals.grandTotal;
+        const message = buildPurchaseMessage({ shopName: sk.shopName, brandName: brand?.name, items: validLines, productNames, total: grandTotal, previousBalance: sk.balance, newBalance: sk.balance + grandTotal, date: invForm.date });
         setPendingWhatsApp({ phone: sk.phone, message, shopName: sk.shopName });
       }
     }
@@ -262,6 +298,23 @@ export default function Invoices({ activeBrand }) {
     return shopkeepers.find(s => s.id === inv.shopkeeperId)?.shopName || inv.customerName || '—';
   };
 
+  // Delivery and payment info can be filled in after the sale (goods often
+  // ship a few days after invoicing) — these update the invoice in place.
+  const [deliveryDraft, setDeliveryDraft] = useState(null);
+  const [paymentDraft, setPaymentDraft] = useState(null);
+
+  const openDeliveryEdit = (inv) => setDeliveryDraft(inv.delivery ? { ...inv.delivery } : { status: 'Pending' });
+  const saveDelivery = (inv) => {
+    editInvoice(inv.id, { delivery: deliveryDraft });
+    setDeliveryDraft(null);
+  };
+
+  const openPaymentEdit = (inv) => setPaymentDraft({ ...(inv.payment || {}) });
+  const savePayment = (inv) => {
+    editInvoice(inv.id, { payment: paymentDraft });
+    setPaymentDraft(null);
+  };
+
   return (
     <div>
       <PageHeader title="Invoices" subtitle="Sales invoices and billing records" action={<Btn onClick={() => setShowNew(true)}>+ New invoice</Btn>} />
@@ -284,7 +337,7 @@ export default function Invoices({ activeBrand }) {
       </div>
 
       <Card style={{ padding: 0 }}>
-        <Table onRowClick={setSelected} columns={[
+        <Table onRowClick={inv => { setSelected(inv); setDeliveryDraft(null); setPaymentDraft(null); }} columns={[
           { key: 'id', label: 'Invoice #', render: v => <span style={{ fontFamily: 'monospace', fontSize: 11 }}>{v.slice(-8).toUpperCase()}</span> },
           { key: 'customer', label: 'Customer', render: (_, row) => (
             <div>
@@ -314,13 +367,31 @@ export default function Invoices({ activeBrand }) {
       </Card>
 
       {/* Invoice detail modal */}
-      {selected && (
-        <Modal title={`Invoice ${selected.id.slice(-8).toUpperCase()}`} onClose={() => setSelected(null)} width={680}>
+      {selected && (() => {
+        // Older invoices (saved before this breakdown existed) won't have
+        // `.totals` — fall back to computing it live from what's there.
+        const totals = selected.totals || computeInvoiceTotals(selected);
+        return (
+        <Modal title={`Invoice ${selected.invoiceNo || selected.id.slice(-8).toUpperCase()}`} onClose={() => { setSelected(null); setDeliveryDraft(null); setPaymentDraft(null); }} width={720}>
+          <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
+            {selected.invoiceNo && <Badge color="accent">{selected.invoiceNo}</Badge>}
+            {selected.salesOrderNo && <Badge color="gray">SO: {selected.salesOrderNo}</Badge>}
+            {selected.quotationNo && <Badge color="gray">QT: {selected.quotationNo}</Badge>}
+            {selected.salesChannel && <Badge color="purple">{selected.salesChannel}</Badge>}
+            {selected.salesStatus && <Badge color="gray">{selected.salesStatus}</Badge>}
+          </div>
+
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12, marginBottom: 16 }}>
             <div><div style={{ fontSize: 11, color: 'var(--text3)' }}>Customer</div><div style={{ fontWeight: 600 }}>{customerLabel(selected)}</div>{selected.isGuest && <Badge color="amber">Guest</Badge>}</div>
             <div><div style={{ fontSize: 11, color: 'var(--text3)' }}>Date</div><div style={{ fontWeight: 600 }}>{selected.date}</div></div>
-            <div><div style={{ fontSize: 11, color: 'var(--text3)' }}>Status</div><Badge color={statusColor[selected.status]}>{selected.status}</Badge></div>
+            <div><div style={{ fontSize: 11, color: 'var(--text3)' }}>Payment status</div><Badge color={statusColor[selected.status]}>{selected.status}</Badge></div>
           </div>
+          {(selected.salesperson || selected.branch) && (
+            <div style={{ display: 'flex', gap: 16, fontSize: 12, color: 'var(--text2)', marginBottom: 16 }}>
+              {selected.salesperson && <span>Salesperson: <strong style={{ color: 'var(--text)' }}>{selected.salesperson}</strong></span>}
+              {selected.branch && <span>Branch: <strong style={{ color: 'var(--text)' }}>{selected.branch}</strong></span>}
+            </div>
+          )}
 
           <Table columns={[
             { key: 'product', label: 'Product', render: (_, row) => row.manualName || resolveProductName(row.productId, products) },
@@ -331,7 +402,8 @@ export default function Invoices({ activeBrand }) {
             }},
             { key: 'qty', label: 'Qty', align: 'right' },
             { key: 'unitPrice', label: 'Unit ₨', align: 'right', render: v => `₨${v}` },
-            { key: 'total', label: 'Total', align: 'right', render: (_, row) => <strong>₨{(row.qty * row.unitPrice).toLocaleString()}</strong> },
+            { key: 'discount', label: 'Disc. ₨', align: 'right', render: v => v ? `₨${v}` : '—' },
+            { key: 'total', label: 'Total', align: 'right', render: (_, row) => <strong>₨{(row.qty * (row.unitPrice - (row.discount || 0))).toLocaleString()}</strong> },
             ...(admin ? [{
               key: 'profit', label: 'Profit', align: 'right', render: (_, row) => {
                 const p = products.find(p => p.id === row.productId);
@@ -340,6 +412,104 @@ export default function Invoices({ activeBrand }) {
               }
             }] : []),
           ]} data={selected.items || []} />
+
+          <div style={{ background: 'var(--bg3)', borderRadius: 'var(--radius)', padding: '12px 14px', margin: '14px 0' }}>
+            <SummaryLine label="Product subtotal" value={totals.productTotal} />
+            {totals.discountTotal > 0 && <SummaryLine label="Discount" value={-totals.discountTotal} />}
+            {totals.additionalChargesTotal > 0 && <SummaryLine label="Additional charges" value={totals.additionalChargesTotal} />}
+            {totals.taxAmount > 0 && <SummaryLine label="Tax" value={totals.taxAmount} />}
+            <div style={{ height: 1, background: 'var(--border2)', margin: '6px 0' }} />
+            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+              <span style={{ color: 'var(--text2)' }}>Grand total</span>
+              <strong style={{ fontFamily: "'Space Grotesk', sans-serif", fontSize: 20, color: 'var(--accent)' }}>₨{selected.total.toLocaleString()}</strong>
+            </div>
+          </div>
+
+          {/* Delivery */}
+          <div style={{ marginBottom: 14 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+              <div style={{ fontWeight: 700, fontSize: 12, color: 'var(--text2)' }}>DELIVERY</div>
+              {deliveryDraft === null
+                ? <button onClick={() => openDeliveryEdit(selected)} style={{ fontSize: 11, color: 'var(--accent)', background: 'none', border: 'none', cursor: 'pointer' }}>Update</button>
+                : <div style={{ display: 'flex', gap: 6 }}>
+                    <button onClick={() => setDeliveryDraft(null)} style={{ fontSize: 11, color: 'var(--text3)', background: 'none', border: 'none', cursor: 'pointer' }}>Cancel</button>
+                    <button onClick={() => saveDelivery(selected)} style={{ fontSize: 11, color: 'var(--accent)', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 600 }}>Save</button>
+                  </div>
+              }
+            </div>
+            {deliveryDraft === null ? (
+              <div style={{ fontSize: 13, color: 'var(--text2)' }}>
+                <Badge color={selected.delivery?.status === 'Delivered' ? 'green' : selected.delivery?.status === 'Partial' ? 'amber' : 'gray'}>{selected.delivery?.status || 'Pending'}</Badge>
+                {selected.delivery?.courier && <span style={{ marginLeft: 10 }}>via {selected.delivery.courier}</span>}
+                {selected.delivery?.trackingNumber && <span style={{ marginLeft: 10 }}>Tracking: {selected.delivery.trackingNumber}</span>}
+              </div>
+            ) : (
+              <div style={{ background: 'var(--bg3)', borderRadius: 'var(--radius)', padding: 12 }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
+                  <select value={deliveryDraft.status || 'Pending'} onChange={e => setDeliveryDraft(d => ({ ...d, status: e.target.value }))}
+                    style={{ padding: '7px 10px', background: 'var(--bg)', border: '0.5px solid var(--border2)', borderRadius: 'var(--radius)', color: 'var(--text)', fontSize: 13 }}>
+                    {DELIVERY_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
+                  </select>
+                  <input type="date" value={deliveryDraft.date || ''} onChange={e => setDeliveryDraft(d => ({ ...d, date: e.target.value }))}
+                    style={{ padding: '7px 10px', background: 'var(--bg)', border: '0.5px solid var(--border2)', borderRadius: 'var(--radius)', color: 'var(--text)', fontSize: 13 }} />
+                  <input value={deliveryDraft.trackingNumber || ''} onChange={e => setDeliveryDraft(d => ({ ...d, trackingNumber: e.target.value }))} placeholder="Tracking #"
+                    style={{ padding: '7px 10px', background: 'var(--bg)', border: '0.5px solid var(--border2)', borderRadius: 'var(--radius)', color: 'var(--text)', fontSize: 13 }} />
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Warranty */}
+          {selected.warranty?.type && (
+            <div style={{ marginBottom: 14, fontSize: 13, color: 'var(--text2)' }}>
+              <div style={{ fontWeight: 700, fontSize: 12, color: 'var(--text2)', marginBottom: 6 }}>WARRANTY</div>
+              {selected.warranty.type} warranty · {selected.warranty.periodMonths} months · expires {selected.warranty.expiryDate}
+              {selected.warranty.installationRequired === 'Yes' && ' · installation required'}
+            </div>
+          )}
+
+          {/* Payment info */}
+          <div style={{ marginBottom: 14 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+              <div style={{ fontWeight: 700, fontSize: 12, color: 'var(--text2)' }}>PAYMENT INFO</div>
+              {paymentDraft === null
+                ? <button onClick={() => openPaymentEdit(selected)} style={{ fontSize: 11, color: 'var(--accent)', background: 'none', border: 'none', cursor: 'pointer' }}>Update</button>
+                : <div style={{ display: 'flex', gap: 6 }}>
+                    <button onClick={() => setPaymentDraft(null)} style={{ fontSize: 11, color: 'var(--text3)', background: 'none', border: 'none', cursor: 'pointer' }}>Cancel</button>
+                    <button onClick={() => savePayment(selected)} style={{ fontSize: 11, color: 'var(--accent)', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 600 }}>Save</button>
+                  </div>
+              }
+            </div>
+            {paymentDraft === null ? (
+              <div style={{ fontSize: 13, color: 'var(--text2)' }}>
+                {selected.payment?.method ? `${selected.payment.method}${selected.payment.bank ? ' · ' + selected.payment.bank : ''}${selected.payment.transactionRef ? ' · Ref: ' + selected.payment.transactionRef : ''}` : 'Not recorded yet'}
+              </div>
+            ) : (
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8, background: 'var(--bg3)', borderRadius: 'var(--radius)', padding: 12 }}>
+                <select value={paymentDraft.method || ''} onChange={e => setPaymentDraft(d => ({ ...d, method: e.target.value }))}
+                  style={{ padding: '7px 10px', background: 'var(--bg)', border: '0.5px solid var(--border2)', borderRadius: 'var(--radius)', color: 'var(--text)', fontSize: 13 }}>
+                  <option value="">— method —</option>
+                  {PAYMENT_METHODS.map(m => <option key={m} value={m}>{m}</option>)}
+                </select>
+                <input value={paymentDraft.bank || ''} onChange={e => setPaymentDraft(d => ({ ...d, bank: e.target.value }))} placeholder="Bank"
+                  style={{ padding: '7px 10px', background: 'var(--bg)', border: '0.5px solid var(--border2)', borderRadius: 'var(--radius)', color: 'var(--text)', fontSize: 13 }} />
+                <input value={paymentDraft.transactionRef || ''} onChange={e => setPaymentDraft(d => ({ ...d, transactionRef: e.target.value }))} placeholder="Transaction ref"
+                  style={{ padding: '7px 10px', background: 'var(--bg)', border: '0.5px solid var(--border2)', borderRadius: 'var(--radius)', color: 'var(--text)', fontSize: 13 }} />
+              </div>
+            )}
+          </div>
+
+          {/* Remarks */}
+          {selected.remarks && Object.values(selected.remarks).some(Boolean) && (
+            <div style={{ marginBottom: 14, fontSize: 12, color: 'var(--text2)' }}>
+              <div style={{ fontWeight: 700, fontSize: 12, color: 'var(--text2)', marginBottom: 6 }}>REMARKS</div>
+              {selected.remarks.internalNotes && <div>Internal: {selected.remarks.internalNotes}</div>}
+              {selected.remarks.customerNotes && <div>Customer: {selected.remarks.customerNotes}</div>}
+              {selected.remarks.deliveryInstructions && <div>Delivery instructions: {selected.remarks.deliveryInstructions}</div>}
+              {selected.remarks.installationInstructions && <div>Installation instructions: {selected.remarks.installationInstructions}</div>}
+              {selected.remarks.specialPricingApprovalNotes && <div>Pricing approval: {selected.remarks.specialPricingApprovalNotes}</div>}
+            </div>
+          )}
 
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 0', borderTop: '0.5px solid var(--border)', marginTop: 12, flexWrap: 'wrap', gap: 8 }}>
             <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
@@ -362,7 +532,8 @@ export default function Invoices({ activeBrand }) {
             </div>
           </div>
         </Modal>
-      )}
+        );
+      })()}
 
       {/* New invoice modal */}
       {showNew && (
@@ -422,14 +593,14 @@ export default function Invoices({ activeBrand }) {
           </div>
 
           {/* Line items */}
-          <div style={{ display: 'grid', gridTemplateColumns: '2fr 65px 100px 95px 34px', gap: 6, marginBottom: 4 }}>
-            {['Product / Variant (dropdown or ✏ Manual)', 'Qty', 'Unit ₨', 'Line total', ''].map((h, i) => (
+          <div style={{ display: 'grid', gridTemplateColumns: '2fr 55px 85px 75px 95px 34px', gap: 6, marginBottom: 4 }}>
+            {['Product / Variant (dropdown or ✏ Manual)', 'Qty', 'Unit ₨', 'Disc. ₨', 'Line total', ''].map((h, i) => (
               <div key={i} style={{ fontSize: 10, fontWeight: 600, color: 'var(--text3)', textTransform: 'uppercase' }}>{h}</div>
             ))}
           </div>
 
           {lines.map((line, i) => (
-            <div key={i} style={{ display: 'grid', gridTemplateColumns: '2fr 65px 100px 95px 34px', gap: 6, marginBottom: 8, alignItems: 'center' }}>
+            <div key={i} style={{ display: 'grid', gridTemplateColumns: '2fr 55px 85px 75px 95px 34px', gap: 6, marginBottom: 8, alignItems: 'center' }}>
               <ProductSelector
                 line={line} index={i} onUpdate={updateLine}
                 products={products} categories={categories}
@@ -440,8 +611,10 @@ export default function Invoices({ activeBrand }) {
                 style={{ padding: '8px 6px', background: 'var(--bg3)', border: '0.5px solid var(--border2)', borderRadius: 'var(--radius)', color: 'var(--text)', outline: 'none', fontSize: 13, width: '100%' }} />
               <input type="number" min="0" value={line.unitPrice} onChange={e => updateLine(i, 'unitPrice', +e.target.value)}
                 style={{ padding: '8px 6px', background: 'var(--bg3)', border: '0.5px solid var(--border2)', borderRadius: 'var(--radius)', color: 'var(--text)', outline: 'none', fontSize: 13, width: '100%' }} />
+              <input type="number" min="0" value={line.discount} onChange={e => updateLine(i, 'discount', +e.target.value)} placeholder="0"
+                style={{ padding: '8px 6px', background: 'var(--bg3)', border: '0.5px solid var(--border2)', borderRadius: 'var(--radius)', color: 'var(--text)', outline: 'none', fontSize: 13, width: '100%' }} />
               <div style={{ textAlign: 'right', fontFamily: "'Space Grotesk', sans-serif", fontWeight: 700, fontSize: 13, color: (line.productId || line.manualName) ? 'var(--accent)' : 'var(--text3)' }}>
-                {(line.productId || line.manualName) ? `₨${(Number(line.qty) * Number(line.unitPrice)).toLocaleString()}` : '—'}
+                {(line.productId || line.manualName) ? `₨${((Number(line.qty) || 0) * ((Number(line.unitPrice) || 0) - (Number(line.discount) || 0))).toLocaleString()}` : '—'}
               </div>
               <button onClick={() => removeLine(i)} style={{ height: 36, color: 'var(--red)', background: 'var(--red-dim)', border: 'none', borderRadius: 'var(--radius)', cursor: 'pointer', fontSize: 16 }}>×</button>
             </div>
@@ -449,15 +622,132 @@ export default function Invoices({ activeBrand }) {
 
           <button onClick={addLine} style={{ fontSize: 12, color: 'var(--accent)', background: 'none', border: '0.5px dashed var(--accent)', borderRadius: 'var(--radius)', padding: '7px 12px', cursor: 'pointer', width: '100%', marginBottom: 14 }}>+ Add another product</button>
 
+          {/* Additional details — optional, collapsed by default so the fast path stays fast */}
+          <div style={{ marginBottom: 14 }}>
+            <button onClick={() => setShowMoreDetails(s => !s)} style={{
+              display: 'flex', alignItems: 'center', gap: 6, background: 'none', border: 'none',
+              color: 'var(--accent)', cursor: 'pointer', fontSize: 13, fontWeight: 500, padding: 0,
+            }}>
+              {showMoreDetails ? '▾' : '▸'} Additional details (sales info, charges, tax, delivery, warranty, remarks)
+            </button>
+
+            {showMoreDetails && (
+              <div style={{ marginTop: 12, padding: 14, background: 'var(--bg3)', borderRadius: 'var(--radius)', border: '0.5px solid var(--border2)' }}>
+
+                <div style={{ fontWeight: 700, fontSize: 12, marginBottom: 8, color: 'var(--text2)' }}>SALES INFO</div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 10 }}>
+                  <div>
+                    <div style={{ fontSize: 12, color: 'var(--text2)', marginBottom: 5, fontWeight: 500 }}>Sales channel</div>
+                    <select value={invForm.salesChannel} onChange={e => setInvForm(f => ({ ...f, salesChannel: e.target.value }))}
+                      style={{ width: '100%', padding: '8px 12px', background: 'var(--bg)', border: '0.5px solid var(--border2)', borderRadius: 'var(--radius)', color: 'var(--text)', outline: 'none', fontSize: 13 }}>
+                      {SALES_CHANNELS.map(c => <option key={c} value={c}>{c}</option>)}
+                    </select>
+                  </div>
+                  <Input label="Salesperson" value={invForm.salesperson} onChange={e => setInvForm(f => ({ ...f, salesperson: e.target.value }))} placeholder="Name" />
+                  <Input label="Branch / office" value={invForm.branch} onChange={e => setInvForm(f => ({ ...f, branch: e.target.value }))} placeholder="e.g. Main branch" />
+                  <div>
+                    <div style={{ fontSize: 12, color: 'var(--text2)', marginBottom: 5, fontWeight: 500 }}>Sales status</div>
+                    <select value={invForm.salesStatus} onChange={e => setInvForm(f => ({ ...f, salesStatus: e.target.value }))}
+                      style={{ width: '100%', padding: '8px 12px', background: 'var(--bg)', border: '0.5px solid var(--border2)', borderRadius: 'var(--radius)', color: 'var(--text)', outline: 'none', fontSize: 13 }}>
+                      {SALES_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
+                    </select>
+                  </div>
+                </div>
+
+                <div style={{ height: 1, background: 'var(--border)', margin: '14px 0' }} />
+
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                  <div style={{ fontWeight: 700, fontSize: 12, color: 'var(--text2)' }}>ADDITIONAL CHARGES</div>
+                  <button onClick={addCharge} style={{ fontSize: 11, color: 'var(--accent)', background: 'none', border: 'none', cursor: 'pointer' }}>+ Add charge</button>
+                </div>
+                {invForm.additionalCharges.length === 0 && <div style={{ fontSize: 12, color: 'var(--text3)', marginBottom: 8 }}>e.g. delivery, installation, transport, packing, loading, insurance...</div>}
+                {invForm.additionalCharges.map(c => (
+                  <div key={c.id} style={{ display: 'grid', gridTemplateColumns: '2fr 1fr auto', gap: 8, marginBottom: 6 }}>
+                    <input value={c.label} onChange={e => updateCharge(c.id, 'label', e.target.value)} placeholder="Charge description (e.g. Delivery)"
+                      style={{ padding: '7px 10px', background: 'var(--bg)', border: '0.5px solid var(--border2)', borderRadius: 'var(--radius)', color: 'var(--text)', outline: 'none', fontSize: 13 }} />
+                    <input type="number" value={c.amount} onChange={e => updateCharge(c.id, 'amount', e.target.value)} placeholder="Amount"
+                      style={{ padding: '7px 10px', background: 'var(--bg)', border: '0.5px solid var(--border2)', borderRadius: 'var(--radius)', color: 'var(--text)', outline: 'none', fontSize: 13 }} />
+                    <button onClick={() => removeCharge(c.id)} style={{ color: 'var(--red)', background: 'none', border: 'none', cursor: 'pointer', fontSize: 16 }}>×</button>
+                  </div>
+                ))}
+
+                <div style={{ height: 1, background: 'var(--border)', margin: '14px 0' }} />
+
+                <div style={{ fontWeight: 700, fontSize: 12, marginBottom: 8, color: 'var(--text2)' }}>TAX</div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10 }}>
+                  <Input label="Sales tax / GST (%)" type="number" value={invForm.tax.gstPercent} onChange={e => setInvForm(f => ({ ...f, tax: { ...f.tax, gstPercent: e.target.value } }))} placeholder="e.g. 17" />
+                  <Input label="Withholding tax (%)" type="number" value={invForm.tax.withholdingTaxPercent} onChange={e => setInvForm(f => ({ ...f, tax: { ...f.tax, withholdingTaxPercent: e.target.value } }))} placeholder="Optional" />
+                  <Input label="Other tax (₨)" type="number" value={invForm.tax.otherTaxAmount} onChange={e => setInvForm(f => ({ ...f, tax: { ...f.tax, otherTaxAmount: e.target.value } }))} placeholder="Optional" />
+                </div>
+
+                <div style={{ height: 1, background: 'var(--border)', margin: '14px 0' }} />
+
+                <div style={{ fontWeight: 700, fontSize: 12, marginBottom: 8, color: 'var(--text2)' }}>DELIVERY</div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10 }}>
+                  <div>
+                    <div style={{ fontSize: 12, color: 'var(--text2)', marginBottom: 5, fontWeight: 500 }}>Delivery status</div>
+                    <select value={invForm.delivery.status} onChange={e => setInvForm(f => ({ ...f, delivery: { ...f.delivery, status: e.target.value } }))}
+                      style={{ width: '100%', padding: '8px 12px', background: 'var(--bg)', border: '0.5px solid var(--border2)', borderRadius: 'var(--radius)', color: 'var(--text)', outline: 'none', fontSize: 13 }}>
+                      {DELIVERY_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
+                    </select>
+                  </div>
+                  <Input label="Courier / transporter" value={invForm.delivery.courier} onChange={e => setInvForm(f => ({ ...f, delivery: { ...f.delivery, courier: e.target.value } }))} />
+                  <Input label="Vehicle number" value={invForm.delivery.vehicleNumber} onChange={e => setInvForm(f => ({ ...f, delivery: { ...f.delivery, vehicleNumber: e.target.value } }))} />
+                </div>
+                <Input label="Delivery remarks" value={invForm.delivery.remarks} onChange={e => setInvForm(f => ({ ...f, delivery: { ...f.delivery, remarks: e.target.value } }))} />
+
+                <div style={{ height: 1, background: 'var(--border)', margin: '14px 0' }} />
+
+                <div style={{ fontWeight: 700, fontSize: 12, marginBottom: 8, color: 'var(--text2)' }}>WARRANTY &amp; SERVICE</div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 10 }}>
+                  <div>
+                    <div style={{ fontSize: 12, color: 'var(--text2)', marginBottom: 5, fontWeight: 500 }}>Warranty type</div>
+                    <select value={invForm.warranty.type} onChange={e => setInvForm(f => ({ ...f, warranty: { ...f.warranty, type: e.target.value } }))}
+                      style={{ width: '100%', padding: '8px 12px', background: 'var(--bg)', border: '0.5px solid var(--border2)', borderRadius: 'var(--radius)', color: 'var(--text)', outline: 'none', fontSize: 13 }}>
+                      <option value="">— none —</option>
+                      {WARRANTY_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+                    </select>
+                  </div>
+                  <Input label="Period (months)" type="number" value={invForm.warranty.periodMonths} onChange={e => setInvForm(f => ({ ...f, warranty: { ...f.warranty, periodMonths: e.target.value } }))} />
+                  <div>
+                    <div style={{ fontSize: 12, color: 'var(--text2)', marginBottom: 5, fontWeight: 500 }}>Installation required?</div>
+                    <select value={invForm.warranty.installationRequired} onChange={e => setInvForm(f => ({ ...f, warranty: { ...f.warranty, installationRequired: e.target.value } }))}
+                      style={{ width: '100%', padding: '8px 12px', background: 'var(--bg)', border: '0.5px solid var(--border2)', borderRadius: 'var(--radius)', color: 'var(--text)', outline: 'none', fontSize: 13 }}>
+                      <option value="No">No</option>
+                      <option value="Yes">Yes</option>
+                    </select>
+                  </div>
+                  <Input label="Service contract" value={invForm.warranty.serviceContract} onChange={e => setInvForm(f => ({ ...f, warranty: { ...f.warranty, serviceContract: e.target.value } }))} placeholder="Optional" />
+                </div>
+
+                <div style={{ height: 1, background: 'var(--border)', margin: '14px 0' }} />
+
+                <div style={{ fontWeight: 700, fontSize: 12, marginBottom: 8, color: 'var(--text2)' }}>REMARKS</div>
+                <Input label="Internal notes" value={invForm.remarks.internalNotes} onChange={e => setInvForm(f => ({ ...f, remarks: { ...f.remarks, internalNotes: e.target.value } }))} />
+                <Input label="Customer notes" value={invForm.remarks.customerNotes} onChange={e => setInvForm(f => ({ ...f, remarks: { ...f.remarks, customerNotes: e.target.value } }))} />
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                  <Input label="Delivery instructions" value={invForm.remarks.deliveryInstructions} onChange={e => setInvForm(f => ({ ...f, remarks: { ...f.remarks, deliveryInstructions: e.target.value } }))} />
+                  <Input label="Installation instructions" value={invForm.remarks.installationInstructions} onChange={e => setInvForm(f => ({ ...f, remarks: { ...f.remarks, installationInstructions: e.target.value } }))} />
+                </div>
+                <Input label="Special pricing approval notes" value={invForm.remarks.specialPricingApprovalNotes} onChange={e => setInvForm(f => ({ ...f, remarks: { ...f.remarks, specialPricingApprovalNotes: e.target.value } }))} />
+              </div>
+            )}
+          </div>
+
           <div style={{ background: 'var(--bg3)', borderRadius: 'var(--radius)', padding: '12px 14px', marginBottom: 14 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: shopkeeperHistory && lineTotal > 0 ? 6 : 0 }}>
-              <span style={{ color: 'var(--text2)' }}>Invoice total</span>
-              <strong style={{ fontFamily: "'Space Grotesk', sans-serif", fontSize: 20, color: 'var(--accent)' }}>₨{lineTotal.toLocaleString()}</strong>
+            <SummaryLine label="Product subtotal" value={liveTotals.productTotal} />
+            {liveTotals.discountTotal > 0 && <SummaryLine label="Discount" value={-liveTotals.discountTotal} />}
+            {liveTotals.additionalChargesTotal > 0 && <SummaryLine label="Additional charges" value={liveTotals.additionalChargesTotal} />}
+            {liveTotals.taxAmount > 0 && <SummaryLine label="Tax" value={liveTotals.taxAmount} />}
+            <div style={{ height: 1, background: 'var(--border2)', margin: '6px 0' }} />
+            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+              <span style={{ color: 'var(--text2)' }}>Grand total</span>
+              <strong style={{ fontFamily: "'Space Grotesk', sans-serif", fontSize: 20, color: 'var(--accent)' }}>₨{liveTotals.grandTotal.toLocaleString()}</strong>
             </div>
-            {shopkeeperHistory && lineTotal > 0 && (
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: 'var(--text3)', paddingTop: 6, borderTop: '0.5px solid var(--border)' }}>
+            {shopkeeperHistory && liveTotals.grandTotal > 0 && (
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: 'var(--text3)', paddingTop: 6, marginTop: 6, borderTop: '0.5px solid var(--border)' }}>
                 <span>New balance after this sale</span>
-                <strong style={{ color: 'var(--amber)' }}>₨{(shopkeeperHistory.currentBalance + lineTotal).toLocaleString()}</strong>
+                <strong style={{ color: 'var(--amber)' }}>₨{(shopkeeperHistory.currentBalance + liveTotals.grandTotal).toLocaleString()}</strong>
               </div>
             )}
           </div>

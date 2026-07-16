@@ -1,6 +1,10 @@
 import { useState } from 'react';
 import { useStore } from '../data/store';
-import { Badge, Card, Table, Modal, Input, Select, Btn, PageHeader } from '../components/UI';
+import { Badge, Card, Table, Modal, Input, Btn, PageHeader } from '../components/UI';
+import {
+  getSubCategoriesFor, ALL_MASTER_BRANDS,
+  COLOR_TEMPERATURES, IP_RATINGS, MOUNTING_TYPES, LIGHTING_APPLICATIONS,
+} from '../data/masterCatalog';
 
 // ── Variants modal — add/edit/delete product sub-products ─────────────────────
 function VariantsModal({ product, onClose }) {
@@ -257,10 +261,30 @@ export default function Inventory({ activeBrand }) {
     sellingPrice: '',
     avgCost: '',
     stock: '',
+    // Technical specifications (all optional — matches the ERP master data
+    // table fields: sub category, manufacturer, model/series, and standard
+    // lighting specs like wattage, color temperature, IP rating, etc.)
+    subCategory: '',
+    manufacturer: '',
+    model: '',
+    series: '',
+    wattage: '',
+    voltage: '',
+    colorTemperature: '',
+    beamAngle: '',
+    cri: '',
+    ipRating: '',
+    bodyColor: '',
+    bodyMaterial: '',
+    mountingType: '',
+    application: '',
+    countryOfOrigin: '',
+    hsCode: '',
   });
 
   const [form, setForm] = useState(getEmptyForm);
   const [formError, setFormError] = useState('');
+  const [showSpecs, setShowSpecs] = useState(false);
   const [batchForm, setBatchForm] = useState({
     supplierId: suppliers[0]?.id || '',
     date: new Date().toISOString().split('T')[0],
@@ -279,11 +303,14 @@ export default function Inventory({ activeBrand }) {
     setForm(getEmptyForm());
     setFormError('');
     setEditing(null);
+    setShowSpecs(false);
     setShowAdd(true);
   };
 
   const openEdit = (p) => {
+    const empty = getEmptyForm();
     setForm({
+      ...empty,
       name: p.name || '',
       sku: p.sku || '',
       brandId: p.brandId || brands[0]?.id || '',
@@ -292,9 +319,27 @@ export default function Inventory({ activeBrand }) {
       sellingPrice: p.sellingPrice ?? '',
       avgCost: p.avgCost ?? '',
       stock: p.stock ?? '',
+      subCategory: p.subCategory || '',
+      manufacturer: p.manufacturer || '',
+      model: p.model || '',
+      series: p.series || '',
+      wattage: p.wattage || '',
+      voltage: p.voltage || '',
+      colorTemperature: p.colorTemperature || '',
+      beamAngle: p.beamAngle || '',
+      cri: p.cri || '',
+      ipRating: p.ipRating || '',
+      bodyColor: p.bodyColor || '',
+      bodyMaterial: p.bodyMaterial || '',
+      mountingType: p.mountingType || '',
+      application: p.application || '',
+      countryOfOrigin: p.countryOfOrigin || '',
+      hsCode: p.hsCode || '',
     });
     setFormError('');
     setEditing(p);
+    // Auto-expand the specs section if this product already has any spec data saved
+    setShowSpecs(!!(p.subCategory || p.manufacturer || p.model || p.wattage || p.ipRating));
     setShowAdd(true);
   };
 
@@ -354,12 +399,15 @@ export default function Inventory({ activeBrand }) {
   };
 
   const columns = [
-    { key: 'name', label: 'Product', render: (v, row) => (
-      <div>
-        <div style={{ fontWeight: 500 }}>{v}</div>
-        <div style={{ fontSize: 11, color: 'var(--text3)' }}>{row.sku}</div>
-      </div>
-    )},
+    { key: 'name', label: 'Product', render: (v, row) => {
+      const subline = [row.sku, row.subCategory, row.manufacturer, row.wattage].filter(Boolean).join(' · ');
+      return (
+        <div>
+          <div style={{ fontWeight: 500 }}>{v}</div>
+          {subline && <div style={{ fontSize: 11, color: 'var(--text3)' }}>{subline}</div>}
+        </div>
+      );
+    }},
     { key: 'brand', label: 'Brand', render: (_, row) => {
       const b = brands.find(b => b.id === row.brandId);
       return <Badge color="accent">{b?.name || '—'}</Badge>;
@@ -510,13 +558,36 @@ export default function Inventory({ activeBrand }) {
             </div>
             <div style={{ marginBottom: 14 }}>
               <div style={{ fontSize: 12, color: 'var(--text2)', marginBottom: 5, fontWeight: 500 }}>Category</div>
-              <select value={form.categoryId} onChange={e => setForm(f => ({ ...f, categoryId: e.target.value }))}
+              <select value={form.categoryId} onChange={e => setForm(f => ({ ...f, categoryId: e.target.value, subCategory: '' }))}
                 style={{ width: '100%', padding: '8px 12px', background: 'var(--bg3)', border: '0.5px solid var(--border2)', borderRadius: 'var(--radius)', color: 'var(--text)', outline: 'none', fontSize: 13 }}>
                 <option value="">— no category —</option>
                 {categories.map(c => <option key={c.id} value={c.id}>{c.icon} {c.name}</option>)}
               </select>
             </div>
           </div>
+
+          {/* Sub Category — from the master catalog when the selected category matches
+              a known master category, otherwise a free-text field */}
+          {(() => {
+            const selectedCatName = categories.find(c => c.id === form.categoryId)?.name;
+            const masterSubCats = getSubCategoriesFor(selectedCatName);
+            return (
+              <div style={{ marginBottom: 14 }}>
+                <div style={{ fontSize: 12, color: 'var(--text2)', marginBottom: 5, fontWeight: 500 }}>Sub category</div>
+                {masterSubCats.length > 0 ? (
+                  <select value={form.subCategory} onChange={e => setForm(f => ({ ...f, subCategory: e.target.value }))}
+                    style={{ width: '100%', padding: '8px 12px', background: 'var(--bg3)', border: '0.5px solid var(--border2)', borderRadius: 'var(--radius)', color: 'var(--text)', outline: 'none', fontSize: 13 }}>
+                    <option value="">— select sub category —</option>
+                    {masterSubCats.map(sc => <option key={sc} value={sc}>{sc}</option>)}
+                  </select>
+                ) : (
+                  <input value={form.subCategory} onChange={e => setForm(f => ({ ...f, subCategory: e.target.value }))}
+                    placeholder={selectedCatName ? 'Type a sub category' : 'Select a category first, or type freely'}
+                    style={{ width: '100%', padding: '8px 12px', background: 'var(--bg3)', border: '0.5px solid var(--border2)', borderRadius: 'var(--radius)', color: 'var(--text)', outline: 'none', fontSize: 13 }} />
+                )}
+              </div>
+            );
+          })()}
 
           {/* Unit + Stock */}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
@@ -583,6 +654,89 @@ export default function Inventory({ activeBrand }) {
               )}
             </div>
           )}
+
+          {/* Technical specifications — optional, collapsed by default */}
+          <div style={{ marginBottom: 14 }}>
+            <button onClick={() => setShowSpecs(s => !s)} style={{
+              display: 'flex', alignItems: 'center', gap: 6, background: 'none', border: 'none',
+              color: 'var(--accent)', cursor: 'pointer', fontSize: 13, fontWeight: 500, padding: 0,
+            }}>
+              {showSpecs ? '▾' : '▸'} Technical specifications (optional)
+            </button>
+
+            {showSpecs && (
+              <div style={{ marginTop: 12, padding: 14, background: 'var(--bg3)', borderRadius: 'var(--radius)', border: '0.5px solid var(--border2)' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                  <div>
+                    <div style={{ fontSize: 12, color: 'var(--text2)', marginBottom: 5, fontWeight: 500 }}>Manufacturer / OEM brand</div>
+                    <input list="master-brands-list" value={form.manufacturer} onChange={e => setForm(f => ({ ...f, manufacturer: e.target.value }))}
+                      placeholder="e.g. Philips, Osram, or your own OEM"
+                      style={{ width: '100%', padding: '8px 12px', background: 'var(--bg)', border: '0.5px solid var(--border2)', borderRadius: 'var(--radius)', color: 'var(--text)', outline: 'none', fontSize: 13 }} />
+                    <datalist id="master-brands-list">
+                      {ALL_MASTER_BRANDS.map(b => <option key={b} value={b} />)}
+                    </datalist>
+                  </div>
+                  <Input label="Model" value={form.model} onChange={e => setForm(f => ({ ...f, model: e.target.value }))} placeholder="Product model" />
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                  <Input label="Series" value={form.series} onChange={e => setForm(f => ({ ...f, series: e.target.value }))} placeholder="Product series/line" />
+                  <Input label="Country of origin" value={form.countryOfOrigin} onChange={e => setForm(f => ({ ...f, countryOfOrigin: e.target.value }))} placeholder="e.g. China / Pakistan" />
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10 }}>
+                  <Input label="Wattage" value={form.wattage} onChange={e => setForm(f => ({ ...f, wattage: e.target.value }))} placeholder="e.g. 12W" />
+                  <Input label="Voltage" value={form.voltage} onChange={e => setForm(f => ({ ...f, voltage: e.target.value }))} placeholder="e.g. 220-240V" />
+                  <Input label="Beam angle" value={form.beamAngle} onChange={e => setForm(f => ({ ...f, beamAngle: e.target.value }))} placeholder="e.g. 120°" />
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10 }}>
+                  <div>
+                    <div style={{ fontSize: 12, color: 'var(--text2)', marginBottom: 5, fontWeight: 500 }}>Color temperature</div>
+                    <select value={form.colorTemperature} onChange={e => setForm(f => ({ ...f, colorTemperature: e.target.value }))}
+                      style={{ width: '100%', padding: '8px 12px', background: 'var(--bg)', border: '0.5px solid var(--border2)', borderRadius: 'var(--radius)', color: 'var(--text)', outline: 'none', fontSize: 13 }}>
+                      <option value="">—</option>
+                      {COLOR_TEMPERATURES.map(ct => <option key={ct} value={ct}>{ct}</option>)}
+                    </select>
+                  </div>
+                  <Input label="CRI" value={form.cri} onChange={e => setForm(f => ({ ...f, cri: e.target.value }))} placeholder="e.g. 80+" />
+                  <div>
+                    <div style={{ fontSize: 12, color: 'var(--text2)', marginBottom: 5, fontWeight: 500 }}>IP rating</div>
+                    <select value={form.ipRating} onChange={e => setForm(f => ({ ...f, ipRating: e.target.value }))}
+                      style={{ width: '100%', padding: '8px 12px', background: 'var(--bg)', border: '0.5px solid var(--border2)', borderRadius: 'var(--radius)', color: 'var(--text)', outline: 'none', fontSize: 13 }}>
+                      <option value="">—</option>
+                      {IP_RATINGS.map(ip => <option key={ip} value={ip}>{ip}</option>)}
+                    </select>
+                  </div>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10 }}>
+                  <Input label="Body color" value={form.bodyColor} onChange={e => setForm(f => ({ ...f, bodyColor: e.target.value }))} placeholder="e.g. White" />
+                  <Input label="Body material" value={form.bodyMaterial} onChange={e => setForm(f => ({ ...f, bodyMaterial: e.target.value }))} placeholder="e.g. Aluminium, PC" />
+                  <div>
+                    <div style={{ fontSize: 12, color: 'var(--text2)', marginBottom: 5, fontWeight: 500 }}>Mounting type</div>
+                    <select value={form.mountingType} onChange={e => setForm(f => ({ ...f, mountingType: e.target.value }))}
+                      style={{ width: '100%', padding: '8px 12px', background: 'var(--bg)', border: '0.5px solid var(--border2)', borderRadius: 'var(--radius)', color: 'var(--text)', outline: 'none', fontSize: 13 }}>
+                      <option value="">—</option>
+                      {MOUNTING_TYPES.map(m => <option key={m} value={m}>{m}</option>)}
+                    </select>
+                  </div>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                  <div>
+                    <div style={{ fontSize: 12, color: 'var(--text2)', marginBottom: 5, fontWeight: 500 }}>Application</div>
+                    <select value={form.application} onChange={e => setForm(f => ({ ...f, application: e.target.value }))}
+                      style={{ width: '100%', padding: '8px 12px', background: 'var(--bg)', border: '0.5px solid var(--border2)', borderRadius: 'var(--radius)', color: 'var(--text)', outline: 'none', fontSize: 13 }}>
+                      <option value="">—</option>
+                      {LIGHTING_APPLICATIONS.map(a => <option key={a} value={a}>{a}</option>)}
+                    </select>
+                  </div>
+                  <Input label="HS code" value={form.hsCode} onChange={e => setForm(f => ({ ...f, hsCode: e.target.value }))} placeholder="Customs HS code" />
+                </div>
+              </div>
+            )}
+          </div>
 
           {/* Validation error */}
           {formError && (

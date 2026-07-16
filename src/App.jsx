@@ -6,10 +6,12 @@ import { getCurrentUser, isAdmin } from './hooks/useAuth';
 import Sidebar from './components/Sidebar';
 import Dashboard from './pages/Dashboard';
 import Inventory from './pages/Inventory';
+import Purchases from './pages/Purchases';
 import Suppliers from './pages/Suppliers';
 import Shopkeepers from './pages/Shopkeepers';
 import Invoices from './pages/Invoices';
 import Ledger from './pages/Ledger';
+import Reports from './pages/Reports';
 import Expenses from './pages/Expenses';
 import Settings from './pages/Settings';
 import ImportData from './pages/ImportData';
@@ -18,7 +20,7 @@ import Login from './pages/Login';
 import { OCRScanner, VoiceInput, AIFab } from './components/AIFeatures';
 
 // Pages only admin can access
-const ADMIN_ONLY_PATHS = ['/inventory', '/suppliers', '/ledger', '/expenses', '/import', '/settings', '/approvals'];
+const ADMIN_ONLY_PATHS = ['/inventory', '/suppliers', '/purchases', '/ledger', '/reports', '/expenses', '/import', '/settings', '/approvals'];
 
 function GuardedRoute({ children }) {
   const location = useLocation();
@@ -52,7 +54,9 @@ function ProtectedLayout({ activeBrand, setActiveBrand }) {
           <Route path="/invoices" element={<GuardedRoute><Invoices activeBrand={activeBrand} prefill={ocrPrefill} /></GuardedRoute>} />
           <Route path="/inventory" element={<GuardedRoute><Inventory activeBrand={activeBrand} /></GuardedRoute>} />
           <Route path="/suppliers" element={<GuardedRoute><Suppliers /></GuardedRoute>} />
+          <Route path="/purchases" element={<GuardedRoute><Purchases /></GuardedRoute>} />
           <Route path="/ledger" element={<GuardedRoute><Ledger /></GuardedRoute>} />
+          <Route path="/reports" element={<GuardedRoute><Reports activeBrand={activeBrand} /></GuardedRoute>} />
           <Route path="/expenses" element={<GuardedRoute><Expenses activeBrand={activeBrand} /></GuardedRoute>} />
           <Route path="/import" element={<GuardedRoute><ImportData /></GuardedRoute>} />
           <Route path="/approvals" element={<GuardedRoute><Approvals /></GuardedRoute>} />

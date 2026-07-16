@@ -3,6 +3,7 @@ import { useStore } from '../data/store';
 import { Badge, Card, Table, Modal, Input, Btn, PageHeader } from '../components/UI';
 import { useAudio } from '../hooks/useAudio';
 import { openWhatsApp, buildReminderMessage, buildPaymentReceivedMessage, buildAccountSummaryMessage } from '../utils/whatsapp';
+import { CUSTOMER_TYPES } from '../utils/sellingCalc';
 
 export default function Shopkeepers() {
   const { shopkeepers, ledgerEntries, invoices, brands, addShopkeeper, editShopkeeper, deleteShopkeeper, recordPayment } = useStore();
@@ -16,7 +17,12 @@ export default function Shopkeepers() {
   const [audioLang, setAudioLang] = useState('en');
   const [confirmDelete, setConfirmDelete] = useState(null);
   const [paymentForm, setPaymentForm] = useState({ amount: '', date: new Date().toISOString().split('T')[0], method: 'Cash' });
-  const [form, setForm] = useState({ shopName: '', owner: '', address: '', phone: '+92-' });
+  const emptyForm = {
+    shopName: '', owner: '', address: '', phone: '+92-',
+    customerType: 'Retail', city: '', country: 'Pakistan', currency: 'PKR',
+    creditLimit: '', taxRegistrationNo: '', shippingAddress: '',
+  };
+  const [form, setForm] = useState(emptyForm);
 
   const filtered = shopkeepers.filter(s =>
     s.shopName.toLowerCase().includes(search.toLowerCase()) ||
@@ -27,8 +33,19 @@ export default function Shopkeepers() {
   const selectedLedger = selected ? ledgerEntries.filter(e => e.shopkeeperId === selected.id) : [];
   const selectedInvoices = selected ? invoices.filter(i => i.shopkeeperId === selected.id).sort((a, b) => new Date(b.date) - new Date(a.date)) : [];
 
-  const openAdd = () => { setForm({ shopName: '', owner: '', address: '', phone: '+92-' }); setEditing(null); setShowAdd(true); };
-  const openEdit = (sk) => { setForm({ shopName: sk.shopName, owner: sk.owner, address: sk.address, phone: sk.phone }); setEditing(sk); setShowAdd(true); };
+  const openAdd = () => { setForm(emptyForm); setEditing(null); setShowAdd(true); };
+  const openEdit = (sk) => {
+    setForm({
+      ...emptyForm,
+      shopName: sk.shopName, owner: sk.owner, address: sk.address, phone: sk.phone,
+      customerType: sk.customerType || 'Retail',
+      city: sk.city || '', country: sk.country || 'Pakistan', currency: sk.currency || 'PKR',
+      creditLimit: sk.creditLimit ?? '', taxRegistrationNo: sk.taxRegistrationNo || '',
+      shippingAddress: sk.shippingAddress || '',
+    });
+    setEditing(sk);
+    setShowAdd(true);
+  };
 
   const handleSave = () => {
     if (!form.shopName.trim()) return;
@@ -91,7 +108,12 @@ export default function Shopkeepers() {
 
       <Card style={{ padding: 0 }}>
         <Table onRowClick={setSelected} columns={[
-          { key: 'shopName', label: 'Shop name', render: (v, row) => (<div><div style={{ fontWeight: 500 }}>{v}</div><div style={{ fontSize: 11, color: 'var(--text3)' }}>{row.owner}</div></div>) },
+          { key: 'shopName', label: 'Shop name', render: (v, row) => (
+            <div>
+              <div style={{ fontWeight: 500 }}>{v}</div>
+              <div style={{ fontSize: 11, color: 'var(--text3)' }}>{row.owner}{row.customerCode ? ` · ${row.customerCode}` : ''}{row.customerType ? ` · ${row.customerType}` : ''}</div>
+            </div>
+          )},
           { key: 'phone', label: 'Phone', muted: true },
           { key: 'address', label: 'Area', muted: true, render: v => (v || '').split(',').slice(-2).join(',').trim() },
           { key: 'balance', label: 'Balance', align: 'right', render: v => v === 0 ? <Badge color="green">Clear</Badge> : <span style={{ fontWeight: 700, color: v > 50000 ? 'var(--red)' : 'var(--amber)', fontFamily: "'Space Grotesk', sans-serif" }}>₨{v.toLocaleString()}</span> },
@@ -177,7 +199,30 @@ export default function Shopkeepers() {
           <Input label="Shop name" value={form.shopName} onChange={e => setForm(f => ({ ...f, shopName: e.target.value }))} placeholder="e.g. Madina Electric Store" />
           <Input label="Owner name" value={form.owner} onChange={e => setForm(f => ({ ...f, owner: e.target.value }))} placeholder="e.g. Zafar Ahmed" />
           <Input label="Phone number" value={form.phone} onChange={e => setForm(f => ({ ...f, phone: e.target.value }))} placeholder="+92-300-0000000" />
-          <Input label="Address" value={form.address} onChange={e => setForm(f => ({ ...f, address: e.target.value }))} placeholder="Shop #, Area, City" />
+          <Input label="Billing address" value={form.address} onChange={e => setForm(f => ({ ...f, address: e.target.value }))} placeholder="Shop #, Area, City" />
+          <Input label="Shipping address (if different)" value={form.shippingAddress} onChange={e => setForm(f => ({ ...f, shippingAddress: e.target.value }))} placeholder="Leave blank to use billing address" />
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+            <div style={{ marginBottom: 14 }}>
+              <div style={{ fontSize: 12, color: 'var(--text2)', marginBottom: 5, fontWeight: 500 }}>Customer type</div>
+              <select value={form.customerType} onChange={e => setForm(f => ({ ...f, customerType: e.target.value }))}
+                style={{ width: '100%', padding: '8px 12px', background: 'var(--bg3)', border: '0.5px solid var(--border2)', borderRadius: 'var(--radius)', color: 'var(--text)', outline: 'none', fontSize: 13 }}>
+                {CUSTOMER_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+              </select>
+            </div>
+            <Input label="City" value={form.city} onChange={e => setForm(f => ({ ...f, city: e.target.value }))} placeholder="e.g. Lahore" />
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+            <Input label="Country" value={form.country} onChange={e => setForm(f => ({ ...f, country: e.target.value }))} />
+            <Input label="Currency" value={form.currency} onChange={e => setForm(f => ({ ...f, currency: e.target.value }))} placeholder="PKR / USD / AED" />
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+            <Input label="Credit limit (₨)" type="number" value={form.creditLimit} onChange={e => setForm(f => ({ ...f, creditLimit: e.target.value }))} placeholder="Optional" />
+            <Input label="Tax registration no. (NTN/GST)" value={form.taxRegistrationNo} onChange={e => setForm(f => ({ ...f, taxRegistrationNo: e.target.value }))} placeholder="Optional" />
+          </div>
+
           <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 8 }}>
             <Btn variant="ghost" onClick={() => { setShowAdd(false); setEditing(null); }}>Cancel</Btn>
             <Btn onClick={handleSave}>{editing ? 'Save changes' : 'Add shopkeeper'}</Btn>

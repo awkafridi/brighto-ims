@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useStore } from '../data/store';
 import { Card, Modal, Input, Btn, PageHeader, Badge } from './UI';
+import { MASTER_CATEGORIES, MASTER_ACCESSORY_CATEGORIES } from '../data/masterCatalog';
 
 const BRAND_COLORS = ['#4f8ef7','#a78bfa','#34d399','#fbbf24','#f87171','#fb923c','#e879f9','#38bdf8'];
 const CAT_ICONS = ['💡','🔆','🔌','🔧','📦','🔋','💻','🏭','⚡','🔩','🛠️','📡'];
@@ -15,6 +16,7 @@ export function BusinessManager({ onClose }) {
   const [brandForm, setBrandForm] = useState({ name: '', color: BRAND_COLORS[0] });
   const [catForm, setCatForm] = useState({ name: '', icon: '💡' });
   const [formError, setFormError] = useState('');
+  const [importMsg, setImportMsg] = useState('');
 
   const saveBrand = () => {
     if (!brandForm.name.trim()) {
@@ -67,6 +69,23 @@ export function BusinessManager({ onClose }) {
 
   const startEditBrand = (b) => { setEditingBrand(b); setBrandForm({ name: b.name, color: b.color }); setFormError(''); };
   const startEditCat = (c) => { setEditingCat(c); setCatForm({ name: c.name, icon: c.icon }); setFormError(''); };
+
+  // Bulk-seeds categories from the master reference list (lighting or
+  // accessories), skipping any name that already exists (case-insensitive)
+  // so this is safe to click more than once.
+  const importMasterCategories = (masterList, label) => {
+    const existingNames = new Set(categories.map(c => c.name.trim().toLowerCase()));
+    let added = 0;
+    masterList.forEach(cat => {
+      if (existingNames.has(cat.name.trim().toLowerCase())) return;
+      addCategory({ name: cat.name, icon: CAT_ICONS[(categories.length + added) % CAT_ICONS.length] });
+      existingNames.add(cat.name.trim().toLowerCase());
+      added++;
+    });
+    setFormError('');
+    setImportMsg(added > 0 ? `✓ Imported ${added} ${label} categor${added === 1 ? 'y' : 'ies'}` : `All ${label} categories already exist`);
+    setTimeout(() => setImportMsg(''), 4000);
+  };
 
   return (
     <Modal title="🏢 Business Names & Categories" onClose={onClose} width={680}>
@@ -154,7 +173,20 @@ export function BusinessManager({ onClose }) {
               </div>
             ))}
           </div>
-          <Btn onClick={() => { setShowAddCat(true); setFormError(''); }}>+ Add category</Btn>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+            <Btn onClick={() => { setShowAddCat(true); setFormError(''); }}>+ Add category</Btn>
+            <Btn variant="ghost" onClick={() => importMasterCategories(MASTER_CATEGORIES, 'lighting')}>
+              📥 Import lighting categories ({MASTER_CATEGORIES.length})
+            </Btn>
+            <Btn variant="ghost" onClick={() => importMasterCategories(MASTER_ACCESSORY_CATEGORIES, 'accessory')}>
+              📥 Import accessory categories ({MASTER_ACCESSORY_CATEGORIES.length})
+            </Btn>
+          </div>
+          {importMsg && (
+            <div style={{ marginTop: 10, fontSize: 12, color: 'var(--green)', padding: '6px 12px', background: 'var(--green-dim)', borderRadius: 'var(--radius)', display: 'inline-block' }}>
+              {importMsg}
+            </div>
+          )}
 
           {(showAddCat || editingCat) && (
             <div style={{ marginTop: 16, padding: 16, background: 'var(--bg3)', borderRadius: 'var(--radius)', border: '0.5px solid var(--border2)' }}>
